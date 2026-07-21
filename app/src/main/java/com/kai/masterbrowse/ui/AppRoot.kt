@@ -8,11 +8,15 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +32,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun AppRoot() {
@@ -39,6 +45,11 @@ fun AppRoot() {
     if (!hasAccess) {
         PermissionScreen()
         return
+    }
+
+    val purgeContext = LocalContext.current.applicationContext
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { FileRepo.purgeTrash(purgeContext) }
     }
 
     var homePath by remember { mutableStateOf(Prefs.homeFolder) }
@@ -74,7 +85,7 @@ fun AppRoot() {
 private fun PermissionScreen() {
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxSize().padding(32.dp),
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

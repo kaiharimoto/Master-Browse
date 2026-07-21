@@ -1,32 +1,43 @@
 package com.kai.masterbrowse.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun BrowserScreen(
@@ -36,9 +47,13 @@ fun BrowserScreen(
     onOpenMedia: (List<File>, Int) -> Unit,
     onSetHome: (File) -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var pickThumbFor by remember { mutableStateOf<File?>(null) }
     var thumbVersion by remember { mutableIntStateOf(0) }
     var menuOpen by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<File?>(null) }
+    var showUpdate by remember { mutableStateOf(false) }
 
     BackHandler(enabled = pickThumbFor != null || dir.absolutePath != home.absolutePath) {
         if (pickThumbFor != null) {
@@ -48,7 +63,12 @@ fun BrowserScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -67,6 +87,19 @@ fun BrowserScreen(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val onInternal = dir.absolutePath.startsWith("/storage/emulated")
+            PaneButton(if (onInternal) "SD" else "INT") {
+                if (onInternal) {
+                    val sd = FileRepo.sdCardRoot(context)
+                    if (sd != null) {
+                        onDirChange(sd)
+                    } else {
+                        Toast.makeText(context, "No SD card found", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    onDirChange(FileRepo.internalRoot())
+                }
+            }
             Box {
                 PaneButton("MENU") { menuOpen = true }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -83,6 +116,13 @@ fun BrowserScreen(
                             menuOpen = false
                             Prefs.setFolderThumb(dir.absolutePath, null)
                             thumbVersion++
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Update from GitHub") },
+                        onClick = {
+                            menuOpen = false
+                            showUpdate = true
                         },
                     )
                 }
@@ -131,6 +171,7 @@ fun BrowserScreen(
                         Prefs.setFolderThumb(d.absolutePath, null)
                         thumbVersion++
                     },
+                    "Delete" to { deleteTarget = d },
                 )
             },
             fileMenu = { f ->
@@ -139,8 +180,39 @@ fun BrowserScreen(
                         Prefs.setFolderThumb(dir.absolutePath, f.absolutePath)
                         thumbVersion++
                     },
+                    "Delete" to { deleteTarget = f },
                 )
             },
         )
+    }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete") },
+            text = {
+                Text(
+                    "Move \"${target.name}\" to trash?\n\n" +
+                        "Trashed items are kept in .MasterBrowseTrash for 30 days, then deleted permanently."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) { FileRepo.moveToTrash(target) }
+                        if (!ok) Toast.makeText(context, "Delete failed", Toast.LENGTH_SHORT).show()
+                        thumbVersion++
+                    }
+                }) { Text("DELETE") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("CANCEL") }
+            },
+        )
+    }
+
+    if (showUpdate) {
+        UpdateDialog { showUpdate = false }
     }
 }

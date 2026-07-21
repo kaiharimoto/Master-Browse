@@ -13,11 +13,24 @@ A utilitarian, tile-based folder-hierarchy media browser for Android tablets (bu
 - **Zoom** — pinch to zoom images and videos, drag to pan when zoomed. The `1:1` / `FIT` button (or double-tap) toggles between fit-to-screen and pixel-perfect (1 media pixel = 1 screen pixel).
 - **Split view** — the `SPLIT` button moves the current item to the left half and opens a tile picker on the right half to choose a second item. Each pane has independent zoom, seek, and swipe navigation. `PICK` re-opens the picker for that pane; `SINGLE` (or back) returns to one pane.
 
+- **Storage toggle** — the `SD`/`INT` button next to `MENU` jumps between internal storage and the SD card.
+- **Pinch tile size** — pinch anywhere on the tile grid to grow/shrink the tiles; the size is remembered.
+- **Trash** — long-press any folder or media tile → *Delete* (with confirmation). Items move to a `.MasterBrowseTrash` folder at the root of the same volume, named `<epochMillis>_<name>`, and are permanently purged 30 days later (checked on app launch). Browse the trash folder like any other to recover things.
+- **In-app updates** — `MENU → Update from GitHub` fetches the latest GitHub release of this repo and downloads/installs its APK asset. No automatic checks.
+
 ## Building
 
 Open the project in Android Studio (or run `./gradlew assembleDebug` with an Android SDK installed; the wrapper uses Gradle 8.9 / AGP 8.5.2 / Kotlin 2.0), then install `app/build/outputs/apk/debug/app-debug.apk` on the tablet.
 
 On first launch the app asks for **All files access** and sends you to the system settings toggle — this is what lets it browse hidden and `.nomedia` folders.
+
+### Signing (one-time setup)
+
+The first build auto-generates `app/release.keystore` and signs **both debug and release** builds with it. **Commit that file** after your first build — then every APK, whether built locally or by CI, has the same signature and in-app updates install cleanly. If signatures ever mismatch (e.g. an old debug install), uninstall the app once and install the new APK.
+
+### Releases (for in-app update)
+
+Pushing a tag like `v1.2` triggers the GitHub Actions workflow, which builds a release APK (versionCode = CI run number, versionName = tag) and attaches it to a GitHub release. `MENU → Update from GitHub` then finds it. The release must be visible without authentication (public repo, or make releases public).
 
 ## Notes
 

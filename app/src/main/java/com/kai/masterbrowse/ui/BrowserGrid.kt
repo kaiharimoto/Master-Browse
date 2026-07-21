@@ -3,6 +3,9 @@ package com.kai.masterbrowse.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +23,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -27,73 +31,99 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.videoFrameMillis
 import com.kai.masterbrowse.FileRepo
+import com.kai.masterbrowse.Prefs
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Tile grid for one directory: subfolders first, then media files. */
+/**
+ * Tile grid for one directory: subfolders first, then media files.
+ * Pinch anywhere on the grid to change the tile size (persisted).
+ */
 @Composable
 fun BrowserGrid(
     dir: File,
     thumbVersion: Int = 0,
-    tileMinSize: Dp = 150.dp,
     onOpenDir: (File) -> Unit,
     onOpenMedia: (List<File>, Int) -> Unit,
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
     fileMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
 ) {
-    val entries by produceState<Pair<List<File>, List<File>>?>(null, dir, thumbVersion) {
-        value = withContext(Dispatchers.IO) { FileRepo.listEntries(dir) }
-    }
-    val e = entries
-    if (e == null) {
-        Box(Modifier.fillMaxSize()) {
-            Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
-        }
-        return
-    }
-    val (dirs, media) = e
-    if (dirs.isEmpty() && media.isEmpty()) {
-        Box(Modifier.fillMaxSize()) {
-            Text("Empty", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
-        }
-        return
-    }
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(tileMinSize),
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        contentPadding = PaddingValues(2.dp),
+    var tileDp by remember { mutableFloatStateOf(Prefs.tileSizeDp) }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var pinching = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val pressed = event.changes.count { it.pressed }
+                        if (pressed == 0) break
+                        if (pressed >= 2) {
+                            pinching = true
+                            val zoomChange = event.calculateZoom()
+                            if (zoomChange != 1f) {
+                                tileDp = (tileDp * zoomChange).coerceIn(70f, 400f)
+                            }
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                    if (pinching) Prefs.tileSizeDp = tileDp
+                }
+            }
     ) {
-        items(dirs, key = { "d:" + it.absolutePath }) { d ->
-            Tile(
-                file = d,
-                isDir = true,
-                thumbVersion = thumbVersion,
-                onClick = { onOpenDir(d) },
-                menu = dirMenu?.invoke(d),
-            )
+        val entries by produceState<Pair<List<File>, List<File>>?>(null, dir, thumbVersion) {
+            value = withContext(Dispatchers.IO) { FileRepo.listEntries(dir) }
         }
-        itemsIndexed(media, key = { _, f -> "f:" + f.absolutePath }) { i, f ->
-            Tile(
-                file = f,
-                isDir = false,
-                thumbVersion = thumbVersion,
-                onClick = { onOpenMedia(media, i) },
-                menu = fileMenu?.invoke(f),
-            )
+        val e = entries
+        if (e == null) {
+            Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
+            return@Box
+        }
+        val (dirs, media) = e
+        if (dirs.isEmpty() && media.isEmpty()) {
+            Text("Empty", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
+            return@Box
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(tileDp.dp),
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(2.dp),
+        ) {
+            items(dirs, key = { "d:" + it.absolutePath }) { d ->
+                Tile(
+                    file = d,
+                    isDir = true,
+                    thumbVersion = thumbVersion,
+                    onClick = { onOpenDir(d) },
+                    menu = dirMenu?.invoke(d),
+                )
+            }
+            itemsIndexed(media, key = { _, f -> "f:" + f.absolutePath }) { i, f ->
+                Tile(
+                    file = f,
+                    isDir = false,
+                    thumbVersion = thumbVersion,
+                    onClick = { onOpenMedia(media, i) },
+                    menu = fileMenu?.invoke(f),
+                )
+            }
         }
     }
 }

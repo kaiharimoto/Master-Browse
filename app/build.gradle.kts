@@ -4,6 +4,27 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// CI passes -PversionCode / -PversionName (derived from the release tag).
+val ciVersionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 2
+val ciVersionName = (project.findProperty("versionName") as String?)?.removePrefix("v") ?: "1.1"
+
+// Self-signing keystore for this personal app. Generated on first build; commit it so
+// every APK (local and CI) carries the same signature and updates install over each other.
+val keystoreFile = file("release.keystore")
+if (!keystoreFile.exists()) {
+    val ext = if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+    val keytool = file(System.getProperty("java.home")).resolve("bin/keytool$ext")
+    exec {
+        commandLine(
+            keytool.absolutePath, "-genkeypair",
+            "-keystore", keystoreFile.absolutePath,
+            "-alias", "masterbrowse", "-keyalg", "RSA", "-keysize", "2048",
+            "-validity", "10000", "-storepass", "masterbrowse", "-keypass", "masterbrowse",
+            "-dname", "CN=MasterBrowse",
+        )
+    }
+}
+
 android {
     namespace = "com.kai.masterbrowse"
     compileSdk = 35
@@ -12,13 +33,27 @@ android {
         applicationId = "com.kai.masterbrowse"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = ciVersionCode
+        versionName = ciVersionName
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.keystore")
+            storePassword = "masterbrowse"
+            keyAlias = "masterbrowse"
+            keyPassword = "masterbrowse"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            // Same key as release so sideloaded updates never hit a signature mismatch.
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -30,6 +65,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

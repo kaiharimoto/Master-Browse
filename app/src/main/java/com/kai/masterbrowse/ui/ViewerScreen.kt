@@ -132,7 +132,6 @@ private fun PickerPane(
         }
         BrowserGrid(
             dir = dir,
-            tileMinSize = 110.dp,
             onOpenDir = onDirChange,
             onOpenMedia = onPick,
         )

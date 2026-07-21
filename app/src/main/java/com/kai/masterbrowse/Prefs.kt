@@ -16,6 +16,12 @@ object Prefs {
             sp.edit().putString("home", value).apply()
         }
 
+    var tileSizeDp: Float
+        get() = sp.getFloat("tileSize", 150f)
+        set(value) {
+            sp.edit().putFloat("tileSize", value).apply()
+        }
+
     fun folderThumb(folderPath: String): String? = sp.getString("thumb:$folderPath", null)
 
     fun setFolderThumb(folderPath: String, imagePath: String?) {
