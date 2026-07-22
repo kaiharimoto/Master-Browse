@@ -4,11 +4,27 @@ import android.content.Context
 import android.os.Environment
 import java.io.File
 
+/** Ordering options offered by the toolbar SORT dropdown. */
+enum class SortMode { NAME, DATE, SIZE }
+
 object FileRepo {
 
     private const val TRASH_DIR = ".MasterBrowseTrash"
 
     private val nameOrder = compareBy<File> { it.name.lowercase() }
+
+    /**
+     * Comparator for [sort]/[desc]. Folders have no meaningful size, so callers
+     * pass [SortMode.NAME] for the folder list when the user picks size.
+     */
+    private fun comparatorFor(sort: SortMode, desc: Boolean): Comparator<File> {
+        val base: Comparator<File> = when (sort) {
+            SortMode.NAME -> compareBy { it.name.lowercase() }
+            SortMode.DATE -> compareBy { it.lastModified() }
+            SortMode.SIZE -> compareBy { it.length() }
+        }
+        return if (desc) base.reversed() else base
+    }
 
     fun defaultHome(): File = Environment.getExternalStorageDirectory()
 
@@ -26,11 +42,20 @@ object FileRepo {
         }
     }
 
-    /** All subdirectories and media files of [dir], sorted by name. Hidden entries included. */
-    fun listEntries(dir: File): Pair<List<File>, List<File>> {
+    /**
+     * All subdirectories and media files of [dir], ordered by [sort]/[desc].
+     * Folders are grouped first. Hidden entries included. Folders fall back to
+     * name order when sorting by size (a folder has no byte size).
+     */
+    fun listEntries(
+        dir: File,
+        sort: SortMode = SortMode.NAME,
+        desc: Boolean = false,
+    ): Pair<List<File>, List<File>> {
         val kids = dir.listFiles() ?: return emptyList<File>() to emptyList()
-        val dirs = kids.filter { it.isDirectory }.sortedWith(nameOrder)
-        val media = kids.filter { it.isMediaFile() }.sortedWith(nameOrder)
+        val dirSort = if (sort == SortMode.SIZE) SortMode.NAME else sort
+        val dirs = kids.filter { it.isDirectory }.sortedWith(comparatorFor(dirSort, desc))
+        val media = kids.filter { it.isMediaFile() }.sortedWith(comparatorFor(sort, desc))
         return dirs to media
     }
 

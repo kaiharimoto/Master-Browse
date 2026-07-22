@@ -22,6 +22,28 @@ object Prefs {
             sp.edit().putFloat("tileSize", value).apply()
         }
 
+    /** How the current folder's entries are ordered. */
+    var sortMode: SortMode
+        get() = runCatching { SortMode.valueOf(sp.getString("sortMode", null) ?: SortMode.NAME.name) }
+            .getOrDefault(SortMode.NAME)
+        set(value) {
+            sp.edit().putString("sortMode", value.name).apply()
+        }
+
+    /** Descending order when true. */
+    var sortDesc: Boolean
+        get() = sp.getBoolean("sortDesc", false)
+        set(value) {
+            sp.edit().putBoolean("sortDesc", value).apply()
+        }
+
+    /** True = justified true-aspect-ratio tiles; false = square tile grid. */
+    var aspectMode: Boolean
+        get() = sp.getBoolean("aspectMode", false)
+        set(value) {
+            sp.edit().putBoolean("aspectMode", value).apply()
+        }
+
     fun folderThumb(folderPath: String): String? = sp.getString("thumb:$folderPath", null)
 
     fun setFolderThumb(folderPath: String, imagePath: String?) {

@@ -96,6 +96,24 @@ fun MediaPane(
         }
     }
 
+    // Videos: seed a provisional size so the media Box (and thus the TextureView
+    // surface) is laid out before ExoPlayer reports its dimensions. Without a real
+    // surface the video renderer never decodes on some devices, so onVideoSizeChanged
+    // would never fire and contentPixels would stay 0 → "Loading…" forever while audio
+    // plays. Once the surface is attached the real size arrives and corrects the aspect.
+    if (player != null) {
+        LaunchedEffect(player, zoom.containerSize) {
+            if (zoom.contentPixels == Size.Zero && zoom.containerSize != Size.Zero) {
+                val vs = player.videoSize
+                zoom.contentPixels = if (vs.width > 0 && vs.height > 0) {
+                    Size(vs.width.toFloat(), vs.height.toFloat())
+                } else {
+                    zoom.containerSize
+                }
+            }
+        }
+    }
+
     Box(
         modifier
             .background(Color.Black)

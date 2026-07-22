@@ -43,6 +43,7 @@ import coil.request.ImageRequest
 import coil.request.videoFrameMillis
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
+import com.kai.masterbrowse.SortMode
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -51,11 +52,18 @@ import kotlinx.coroutines.withContext
 /**
  * Tile grid for one directory: subfolders first, then media files.
  * Pinch anywhere on the grid to change the tile size (persisted).
+ *
+ * Two layouts, chosen by [aspectMode]:
+ *  - square grid ([LazyVerticalGrid], cropped 1:1 thumbnails)
+ *  - justified rows ([JustifiedGrid], each tile at its true aspect ratio)
  */
 @Composable
 fun BrowserGrid(
     dir: File,
     thumbVersion: Int = 0,
+    sortMode: SortMode = Prefs.sortMode,
+    sortDesc: Boolean = Prefs.sortDesc,
+    aspectMode: Boolean = Prefs.aspectMode,
     onOpenDir: (File) -> Unit,
     onOpenMedia: (List<File>, Int) -> Unit,
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
@@ -86,8 +94,10 @@ fun BrowserGrid(
                 }
             }
     ) {
-        val entries by produceState<Pair<List<File>, List<File>>?>(null, dir, thumbVersion) {
-            value = withContext(Dispatchers.IO) { FileRepo.listEntries(dir) }
+        val entries by produceState<Pair<List<File>, List<File>>?>(
+            null, dir, thumbVersion, sortMode, sortDesc,
+        ) {
+            value = withContext(Dispatchers.IO) { FileRepo.listEntries(dir, sortMode, sortDesc) }
         }
         val e = entries
         if (e == null) {
@@ -99,48 +109,68 @@ fun BrowserGrid(
             Text("Empty", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
             return@Box
         }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(tileDp.dp),
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            contentPadding = PaddingValues(2.dp),
-        ) {
-            items(dirs, key = { "d:" + it.absolutePath }) { d ->
-                Tile(
-                    file = d,
-                    isDir = true,
-                    thumbVersion = thumbVersion,
-                    onClick = { onOpenDir(d) },
-                    menu = dirMenu?.invoke(d),
-                )
-            }
-            itemsIndexed(media, key = { _, f -> "f:" + f.absolutePath }) { i, f ->
-                Tile(
-                    file = f,
-                    isDir = false,
-                    thumbVersion = thumbVersion,
-                    onClick = { onOpenMedia(media, i) },
-                    menu = fileMenu?.invoke(f),
-                )
+        if (aspectMode) {
+            JustifiedGrid(
+                dirs = dirs,
+                media = media,
+                targetRowHeightDp = tileDp,
+                thumbVersion = thumbVersion,
+                onOpenDir = onOpenDir,
+                onOpenMedia = onOpenMedia,
+                dirMenu = dirMenu,
+                fileMenu = fileMenu,
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(tileDp.dp),
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                contentPadding = PaddingValues(2.dp),
+            ) {
+                items(dirs, key = { "d:" + it.absolutePath }) { d ->
+                    TileContent(
+                        file = d,
+                        isDir = true,
+                        thumbVersion = thumbVersion,
+                        onClick = { onOpenDir(d) },
+                        menu = dirMenu?.invoke(d),
+                        modifier = Modifier.aspectRatio(1f),
+                    )
+                }
+                itemsIndexed(media, key = { _, f -> "f:" + f.absolutePath }) { i, f ->
+                    TileContent(
+                        file = f,
+                        isDir = false,
+                        thumbVersion = thumbVersion,
+                        onClick = { onOpenMedia(media, i) },
+                        menu = fileMenu?.invoke(f),
+                        modifier = Modifier.aspectRatio(1f),
+                    )
+                }
             }
         }
     }
 }
 
+/**
+ * The visual content of a single tile: thumbnail, video badge, name label, and
+ * long-press menu. The caller sizes it via [modifier] (a 1:1 square in the grid,
+ * or an aspect-ratio'd box in the justified layout).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Tile(
+fun TileContent(
     file: File,
     isDir: Boolean,
     thumbVersion: Int,
     onClick: () -> Unit,
     menu: List<Pair<String, () -> Unit>>?,
+    modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(
-        Modifier
-            .aspectRatio(1f)
+        modifier
             .background(Color(0xFF17181B))
             .combinedClickable(
                 onClick = onClick,

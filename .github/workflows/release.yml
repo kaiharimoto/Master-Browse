@@ -1,12 +1,17 @@
-name: Release APK
+name: Build APK
 
+# Releases are built and signed LOCALLY (with the app's stable keystore, which is
+# intentionally not committed to this public repo), then uploaded to a GitHub release.
+# That keeps every published APK on the same signature so in-app updates install cleanly.
+#
+# A CI build here would sign with a freshly generated, throwaway keystore and break that
+# signature chain, so this workflow no longer runs on tags and does not create releases.
+# It only builds a (differently-signed, debug-only) artifact on manual dispatch.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -20,19 +25,10 @@ jobs:
           java-version: "17"
 
       - name: Build release APK
-        run: ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ github.ref_name }} --no-daemon
-
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk master-browse-${{ github.ref_name }}.apk
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: master-browse-*.apk
-
-      - name: Create GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: master-browse-*.apk
+          path: app/build/outputs/apk/release/app-release.apk

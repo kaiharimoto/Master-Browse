@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
+import com.kai.masterbrowse.SortMode
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +55,22 @@ fun BrowserScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<File?>(null) }
     var showUpdate by remember { mutableStateOf(false) }
+    var sortMode by remember { mutableStateOf(Prefs.sortMode) }
+    var sortDesc by remember { mutableStateOf(Prefs.sortDesc) }
+    var aspectMode by remember { mutableStateOf(Prefs.aspectMode) }
+    var sortOpen by remember { mutableStateOf(false) }
+
+    fun selectSort(mode: SortMode) {
+        if (sortMode == mode) {
+            sortDesc = !sortDesc
+        } else {
+            sortMode = mode
+            sortDesc = mode != SortMode.NAME // name defaults A→Z; date/size default newest/largest first
+        }
+        Prefs.sortMode = sortMode
+        Prefs.sortDesc = sortDesc
+        sortOpen = false
+    }
 
     BackHandler(enabled = pickThumbFor != null || dir.absolutePath != home.absolutePath) {
         if (pickThumbFor != null) {
@@ -87,6 +104,18 @@ fun BrowserScreen(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Box {
+                PaneButton("SORT") { sortOpen = true }
+                DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                    SortMenuItem("Name", sortMode == SortMode.NAME, sortDesc) { selectSort(SortMode.NAME) }
+                    SortMenuItem("Date modified", sortMode == SortMode.DATE, sortDesc) { selectSort(SortMode.DATE) }
+                    SortMenuItem("File size", sortMode == SortMode.SIZE, sortDesc) { selectSort(SortMode.SIZE) }
+                }
+            }
+            PaneButton(if (aspectMode) "SQUARE" else "ASPECT") {
+                aspectMode = !aspectMode
+                Prefs.aspectMode = aspectMode
+            }
             val onInternal = dir.absolutePath.startsWith("/storage/emulated")
             PaneButton(if (onInternal) "SD" else "INT") {
                 if (onInternal) {
@@ -149,6 +178,9 @@ fun BrowserScreen(
         BrowserGrid(
             dir = dir,
             thumbVersion = thumbVersion,
+            sortMode = sortMode,
+            sortDesc = sortDesc,
+            aspectMode = aspectMode,
             onOpenDir = onDirChange,
             onOpenMedia = { list, i ->
                 val target = pickThumbFor
@@ -215,4 +247,14 @@ fun BrowserScreen(
     if (showUpdate) {
         UpdateDialog { showUpdate = false }
     }
+}
+
+/** One row of the SORT dropdown; shows ▲/▼ on the active sort key. */
+@Composable
+private fun SortMenuItem(label: String, active: Boolean, desc: Boolean, onClick: () -> Unit) {
+    val prefix = if (active) (if (desc) "▼ " else "▲ ") else "     "
+    DropdownMenuItem(
+        text = { Text(prefix + label, color = if (active) Color.White else Color(0xFFB8BCC2)) },
+        onClick = onClick,
+    )
 }
