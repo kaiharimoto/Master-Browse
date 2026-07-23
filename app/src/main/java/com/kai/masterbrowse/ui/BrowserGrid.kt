@@ -1,5 +1,6 @@
 package com.kai.masterbrowse.ui
 
+import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -40,7 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.request.videoFrameMillis
+import coil.request.videoFrameOption
+import coil.request.videoFramePercent
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
 import com.kai.masterbrowse.SortMode
@@ -188,7 +190,15 @@ fun TileContent(
                 model = remember(thumbFile) {
                     ImageRequest.Builder(context)
                         .data(thumbFile)
-                        .apply { if (thumbFile.isVideoFile()) videoFrameMillis(1000) }
+                        .apply {
+                            if (thumbFile.isVideoFile()) {
+                                // 25% in (not a fixed 1s, which overshoots short clips), decoding
+                                // the exact frame: keyframe-only retrieval snaps fade-ins to the
+                                // black first keyframe.
+                                videoFramePercent(0.25)
+                                videoFrameOption(MediaMetadataRetriever.OPTION_CLOSEST)
+                            }
+                        }
                         .crossfade(false)
                         .build()
                 },

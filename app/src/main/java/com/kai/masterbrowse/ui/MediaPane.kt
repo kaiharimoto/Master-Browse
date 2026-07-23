@@ -1,5 +1,6 @@
 package com.kai.masterbrowse.ui
 
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.view.TextureView
 import androidx.compose.animation.core.Animatable
@@ -54,6 +55,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -63,7 +67,8 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
-import coil.request.videoFrameMillis
+import coil.request.videoFrameOption
+import coil.request.videoFramePercent
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
 import kotlinx.coroutines.Job
@@ -148,7 +153,7 @@ fun MediaPane(
     }
 
     // Hold-to-scrub (J/K on videos): a coroutine that seeks by a step that grows the longer the
-    // key is held. Uses fast keyframe seeks and pauses playback for a clean scrub, restoring state
+    // key is held. Uses exact seeks and pauses playback for a clean scrub, restoring state
     // when released.
     var jogJob by remember { mutableStateOf<Job?>(null) }
     var jogWasPlaying by remember { mutableStateOf(true) }
@@ -156,15 +161,21 @@ fun MediaPane(
         val p = player ?: return
         if (jogJob != null) return
         jogWasPlaying = p.playWhenReady
-        p.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+        p.setSeekParameters(SeekParameters.EXACT)
         p.playWhenReady = false
         jogJob = scope.launch {
             var held = 0L
+            // Advance our own target instead of stepping from currentPosition: keyframe seeks
+            // snap currentPosition back to the previous sync frame, so a step smaller than the
+            // keyframe interval never escaped it and the jog looped the same snippet forever.
+            var target = p.currentPosition
             while (isActive) {
                 val duration = p.duration.coerceAtLeast(1L)
                 val step = (250L + held / 2L).coerceAtMost(5000L) // accelerates while held
-                val target = (p.currentPosition + if (backward) -step else step).coerceIn(0L, duration)
-                p.seekTo(target)
+                target = (target + if (backward) -step else step).coerceIn(0L, duration)
+                // Skip a tick if the previous seek is still decoding; target keeps advancing
+                // so the jog rate stays tied to hold time, not decode speed.
+                if (p.playbackState == Player.STATE_READY) p.seekTo(target)
                 delay(60)
                 held += 60
             }
@@ -290,7 +301,15 @@ private fun NeighborPreview(file: File, layer: GraphicsLayerScope.() -> Unit) {
         model = remember(file) {
             ImageRequest.Builder(context)
                 .data(file)
-                .apply { if (file.isVideoFile()) videoFrameMillis(1000) }
+                .apply {
+                    if (file.isVideoFile()) {
+                        // 25% in (not a fixed 1s, which overshoots short clips), decoding the
+                        // exact frame: keyframe-only retrieval snaps fade-ins to the black
+                        // first keyframe.
+                        videoFramePercent(0.25)
+                        videoFrameOption(MediaMetadataRetriever.OPTION_CLOSEST)
+                    }
+                }
                 .build()
         },
         contentDescription = null,
@@ -337,6 +356,7 @@ private fun BoxScope.PaneOverlay(
         var position by remember(player) { mutableLongStateOf(0L) }
         var duration by remember(player) { mutableLongStateOf(0L) }
         var dragging by remember(player) { mutableStateOf(false) }
+        var scrubWasPlaying by remember(player) { mutableStateOf(false) }
         var playing by remember(player) { mutableStateOf(true) }
         LaunchedEffect(player) {
             while (true) {
@@ -346,6 +366,23 @@ private fun BoxScope.PaneOverlay(
                 }
                 playing = player.isPlaying
                 delay(200)
+            }
+        }
+        // Scrub pump: while dragging, seek to the latest finger position, but only once the
+        // previous seek has finished decoding (state back to READY). Exact seeks give a frame
+        // for every position instead of sparse keyframes, and pacing them at decode speed —
+        // always jumping to the newest target — keeps the preview from stuttering behind a
+        // backlog of stale seeks.
+        LaunchedEffect(player, dragging) {
+            if (!dragging) return@LaunchedEffect
+            var lastSeeked = -1L
+            while (true) {
+                val target = position
+                if (target != lastSeeked && player.playbackState == Player.STATE_READY) {
+                    player.seekTo(target)
+                    lastSeeked = target
+                }
+                delay(33)
             }
         }
         Row(
@@ -369,16 +406,21 @@ private fun BoxScope.PaneOverlay(
             Slider(
                 value = if (duration > 0) position.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
                 onValueChange = {
-                    dragging = true
-                    // Fast keyframe seeks while scrubbing so frames track the finger.
-                    player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
-                    position = it.toLong()
-                    player.seekTo(it.toLong())
+                    if (!dragging) {
+                        // Pause for the scrub so playback doesn't fight the preview seeks;
+                        // restored on release.
+                        dragging = true
+                        scrubWasPlaying = player.playWhenReady
+                        player.playWhenReady = false
+                        player.setSeekParameters(SeekParameters.EXACT)
+                    }
+                    position = it.toLong() // the scrub pump above issues the actual seeks
                 },
                 onValueChangeFinished = {
                     // Exact seek on release so you land precisely where you let go.
                     player.setSeekParameters(SeekParameters.DEFAULT)
                     player.seekTo(position)
+                    player.playWhenReady = scrubWasPlaying
                     dragging = false
                 },
                 valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
@@ -422,6 +464,26 @@ private fun rememberVideoPlayer(file: File, zoom: ZoomState): ExoPlayer {
             player.removeListener(listener)
             player.release()
         }
+    }
+    // Pause (video + audio) whenever the app leaves the screen or loses focus, and pick
+    // playback back up on return only if it was playing when we left.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(player, lifecycleOwner) {
+        var wasPlaying = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasPlaying = player.playWhenReady
+                    player.playWhenReady = false
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (wasPlaying) player.playWhenReady = true
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     return player
 }

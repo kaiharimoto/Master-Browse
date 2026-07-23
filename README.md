@@ -4,7 +4,7 @@ A utilitarian, tile-based folder-hierarchy media browser for Android tablets (bu
 
 ## Features
 
-- **Tile grid browser** — folders first, then images/videos, with fast thumbnails (Coil, sized to the tile, memory-cached; video tiles show a frame from 1s in).
+- **Tile grid browser** — folders first, then images/videos, with fast thumbnails (Coil, sized to the tile, memory-cached; video tiles show the exact frame 25% into the video, so short clips and fade-from-black intros still get a real picture).
 - **Sees everything** — uses direct filesystem access ("All files access"), so hidden folders, dotfiles, and folders containing `.nomedia` all show up. MediaStore is never used.
 - **Home folder** — `MENU → Set this folder as home` (or long-press a folder tile). The app opens there on launch; `HOME` jumps back.
 - **Custom folder thumbnails** — long-press a folder tile → *Pick thumbnail for this folder*, then tap any media inside it. Or long-press a media tile → *Set as thumbnail for this folder*. Falls back to the first media file found inside (one subfolder level deep).
