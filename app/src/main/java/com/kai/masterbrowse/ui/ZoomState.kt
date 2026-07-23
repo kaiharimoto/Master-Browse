@@ -1,5 +1,8 @@
 package com.kai.masterbrowse.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -18,10 +21,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * Zoom/pan state for one media pane.
@@ -56,7 +61,7 @@ class ZoomState {
     val isPixelPerfect: Boolean
         get() = contentPixels.width > 0f && abs(scale - pixelPerfectScale) < 0.01f
 
-    /** True when the displayed media is larger than the container in either axis (drag pans instead of swiping). */
+    /** True when the displayed media is larger than the container in either axis (drag pans instead of paging). */
     val overflows: Boolean
         get() = fittedSize.width * scale > containerSize.width + 1f ||
             fittedSize.height * scale > containerSize.height + 1f
@@ -101,35 +106,55 @@ class ZoomState {
 /**
  * Gestures for a media pane:
  * - tap: toggle controls
- * - double tap: toggle fit / pixel-perfect
+ * - double tap: previous (left half) / next (right half), instant
  * - pinch: zoom (about the pinch centroid)
- * - single-finger drag: pan when zoomed in, otherwise swipe (any direction) to next/previous media
+ * - single-finger drag when zoomed in: pan
+ * - single-finger horizontal drag when at fit: TikTok-style paging — [pageOffset] follows the
+ *   finger, the neighbor peeks in, and on release it snaps to next/previous (past 25% width or a
+ *   flick) or springs back. Drags already consumed by a child (the seek bar) are ignored, so
+ *   scrubbing a video no longer also pages.
  */
 @Composable
 fun Modifier.mediaGestures(
     zoom: ZoomState,
-    onSwipe: (forward: Boolean) -> Unit,
+    pageOffset: Animatable<Float, AnimationVector1D>,
+    scope: CoroutineScope,
+    canPrev: () -> Boolean,
+    canNext: () -> Boolean,
+    onCommit: (forward: Boolean) -> Unit,
     onTap: () -> Unit,
+    onDoubleTapNav: (forward: Boolean) -> Unit,
 ): Modifier {
-    val swipeCb = rememberUpdatedState(onSwipe)
     val tapCb = rememberUpdatedState(onTap)
+    val doubleTapCb = rememberUpdatedState(onDoubleTapNav)
+    val commitCb = rememberUpdatedState(onCommit)
+    val canPrevCb = rememberUpdatedState(canPrev)
+    val canNextCb = rememberUpdatedState(canNext)
     return this
         .pointerInput(zoom) {
             detectTapGestures(
                 onTap = { tapCb.value() },
-                onDoubleTap = { zoom.togglePixelPerfect() },
+                onDoubleTap = { pos ->
+                    val w = zoom.containerSize.width
+                    if (w > 0f) doubleTapCb.value(pos.x > w / 2f)
+                },
             )
         }
         .pointerInput(zoom) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false)
+                val startOffset = pageOffset.value
                 var total = Offset.Zero
                 var pastSlop = false
                 var pinched = false
+                var paging = false
+                var childConsumed = false
+                val velocity = VelocityTracker()
                 while (true) {
                     val event = awaitPointerEvent()
                     val pressed = event.changes.count { it.pressed }
                     if (pressed == 0) break
+                    if (event.changes.any { it.isConsumed }) childConsumed = true
                     val zoomChange = event.calculateZoom()
                     val pan = event.calculatePan()
                     val centroid = event.calculateCentroid()
@@ -139,17 +164,49 @@ fun Modifier.mediaGestures(
                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                         pastSlop = true
                         total = Offset.Zero
-                    } else {
+                    } else if (!childConsumed) {
                         total += pan
-                        if (!pastSlop && total.getDistance() > viewConfiguration.touchSlop) pastSlop = true
-                        if (pastSlop) event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        if (!pastSlop && total.getDistance() > viewConfiguration.touchSlop) {
+                            pastSlop = true
+                            paging = abs(total.x) >= abs(total.y) // horizontal-only paging
+                        }
+                        if (paging) {
+                            val pt = event.changes.firstOrNull { it.pressed }
+                            if (pt != null) velocity.addPosition(pt.uptimeMillis, pt.position)
+                            val w = size.width.toFloat()
+                            val minX = if (canNextCb.value()) -w else 0f
+                            val maxX = if (canPrevCb.value()) w else 0f
+                            // snapTo is suspend and this is a restricted pointer scope, so hop to the
+                            // regular scope; the target is accumulated synchronously so order is safe.
+                            val target = (startOffset + total.x).coerceIn(minX, maxX)
+                            scope.launch { pageOffset.snapTo(target) }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
                     }
                 }
-                if (!pinched && !zoom.overflows && pastSlop) {
-                    val threshold = 80.dp.toPx()
-                    val d = if (abs(total.x) >= abs(total.y)) total.x else total.y
-                    if (d <= -threshold) swipeCb.value(true)
-                    else if (d >= threshold) swipeCb.value(false)
+                if (!pinched && !zoom.overflows && paging && !childConsumed) {
+                    val w = size.width.toFloat()
+                    val vx = velocity.calculateVelocity().x
+                    val off = pageOffset.value
+                    val threshold = w * 0.25f
+                    val fling = 1000f
+                    val goNext = (off <= -threshold || vx <= -fling) && canNextCb.value()
+                    val goPrev = (off >= threshold || vx >= fling) && canPrevCb.value()
+                    scope.launch {
+                        when {
+                            goNext -> {
+                                pageOffset.animateTo(-w, tween(180))
+                                commitCb.value(true)
+                                pageOffset.snapTo(0f)
+                            }
+                            goPrev -> {
+                                pageOffset.animateTo(w, tween(180))
+                                commitCb.value(false)
+                                pageOffset.snapTo(0f)
+                            }
+                            else -> pageOffset.animateTo(0f, tween(180))
+                        }
+                    }
                 }
             }
         }

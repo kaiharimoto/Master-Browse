@@ -8,9 +8,10 @@ A utilitarian, tile-based folder-hierarchy media browser for Android tablets (bu
 - **Sees everything** — uses direct filesystem access ("All files access"), so hidden folders, dotfiles, and folders containing `.nomedia` all show up. MediaStore is never used.
 - **Home folder** — `MENU → Set this folder as home` (or long-press a folder tile). The app opens there on launch; `HOME` jumps back.
 - **Custom folder thumbnails** — long-press a folder tile → *Pick thumbnail for this folder*, then tap any media inside it. Or long-press a media tile → *Set as thumbnail for this folder*. Falls back to the first media file found inside (one subfolder level deep).
-- **Fullscreen viewer** — tap a tile. Videos autoplay, loop forever, and have a seekbar + play/pause. Tap the screen to show/hide the controls.
-- **Swipe navigation** — swipe left/right or up/down (when not zoomed in) to go to the next/previous item in the folder.
-- **Zoom** — pinch to zoom images and videos, drag to pan when zoomed. The `1:1` / `FIT` button (or double-tap) toggles between fit-to-screen and pixel-perfect (1 media pixel = 1 screen pixel).
+- **Fullscreen viewer** — tap a tile. Videos autoplay, loop forever, and have a live-scrubbing seekbar + play/pause. Tap the screen to show/hide the controls.
+- **Swipe navigation** — swipe left/right (when not zoomed in) to go to the next/previous item; the item follows your finger and snaps like a pager. Double-tap the left/right half of the screen to jump previous/next instantly.
+- **Keyboard** — with a hardware keyboard, `←`/`→` go to the previous/next item, and (on videos) hold `J` to rewind or `K` to fast-forward, accelerating the longer you hold.
+- **Zoom** — pinch to zoom images and videos, drag to pan when zoomed. The `1:1` / `FIT` button toggles between fit-to-screen and pixel-perfect (1 media pixel = 1 screen pixel).
 - **Split view** — the `SPLIT` button moves the current item to the left half and opens a tile picker on the right half to choose a second item. Each pane has independent zoom, seek, and swipe navigation. `PICK` re-opens the picker for that pane; `SINGLE` (or back) returns to one pane.
 
 - **Storage toggle** — the `SD`/`INT` button next to `MENU` jumps between internal storage and the SD card.

@@ -2,9 +2,11 @@ package com.kai.masterbrowse.ui
 
 import android.net.Uri
 import android.view.TextureView
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -12,8 +14,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,13 +30,22 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -44,16 +58,26 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
+import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import coil.request.videoFrameMillis
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * One fullscreen (or half-screen in split mode) media view: an image or a looping video,
- * with zoom/pan, swipe navigation within [items], and a tap-toggled control overlay.
+ * with zoom/pan, TikTok-style paging within [items], keyboard navigation, and a tap-toggled
+ * control overlay.
+ *
+ * Navigation: horizontal drag (follows finger, snaps), double-tap left/right (instant),
+ * ←/→ keys (instant). For videos, hold J to rewind and K to fast-forward (accelerating).
  */
 @Composable
 fun MediaPane(
@@ -68,11 +92,15 @@ fun MediaPane(
     val file = items.getOrNull(index)
     val zoom = remember { ZoomState() }
     var controlsVisible by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    val pageOffset = remember { Animatable(0f) }
+    val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(file) {
         zoom.reset()
         zoom.contentPixels = Size.Zero
     }
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
 
     val isVideo = file?.isVideoFile() == true
     val player = if (file != null && isVideo) rememberVideoPlayer(file, zoom) else null
@@ -96,11 +124,10 @@ fun MediaPane(
         }
     }
 
-    // Videos: seed a provisional size so the media Box (and thus the TextureView
-    // surface) is laid out before ExoPlayer reports its dimensions. Without a real
-    // surface the video renderer never decodes on some devices, so onVideoSizeChanged
-    // would never fire and contentPixels would stay 0 → "Loading…" forever while audio
-    // plays. Once the surface is attached the real size arrives and corrects the aspect.
+    // Videos: seed a provisional size so the media Box (and thus the TextureView surface) is laid
+    // out before ExoPlayer reports its dimensions. Without a real surface the video renderer never
+    // decodes on some devices, so onVideoSizeChanged would never fire and contentPixels would stay
+    // 0 → "Loading…" forever while audio plays. The real size then corrects the aspect ratio.
     if (player != null) {
         LaunchedEffect(player, zoom.containerSize) {
             if (zoom.contentPixels == Size.Zero && zoom.containerSize != Size.Zero) {
@@ -114,24 +141,102 @@ fun MediaPane(
         }
     }
 
+    fun goInstant(forward: Boolean) {
+        if (items.isEmpty()) return
+        val next = index + if (forward) 1 else -1
+        if (next in items.indices) index = next
+    }
+
+    // Hold-to-scrub (J/K on videos): a coroutine that seeks by a step that grows the longer the
+    // key is held. Uses fast keyframe seeks and pauses playback for a clean scrub, restoring state
+    // when released.
+    var jogJob by remember { mutableStateOf<Job?>(null) }
+    var jogWasPlaying by remember { mutableStateOf(true) }
+    fun startJog(backward: Boolean) {
+        val p = player ?: return
+        if (jogJob != null) return
+        jogWasPlaying = p.playWhenReady
+        p.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+        p.playWhenReady = false
+        jogJob = scope.launch {
+            var held = 0L
+            while (isActive) {
+                val duration = p.duration.coerceAtLeast(1L)
+                val step = (250L + held / 2L).coerceAtMost(5000L) // accelerates while held
+                val target = (p.currentPosition + if (backward) -step else step).coerceIn(0L, duration)
+                p.seekTo(target)
+                delay(60)
+                held += 60
+            }
+        }
+    }
+    fun stopJog() {
+        jogJob?.cancel()
+        jogJob = null
+        player?.let {
+            it.setSeekParameters(SeekParameters.DEFAULT)
+            it.playWhenReady = jogWasPlaying
+        }
+    }
+    DisposableEffect(player) { onDispose { jogJob?.cancel(); jogJob = null } }
+
     Box(
         modifier
             .background(Color.Black)
             .clipToBounds()
             .onSizeChanged { zoom.containerSize = Size(it.width.toFloat(), it.height.toFloat()) }
+            .focusRequester(focusRequester)
+            .onPreviewKeyEvent { ev ->
+                when (ev.key) {
+                    Key.DirectionLeft -> {
+                        if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) goInstant(false)
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) goInstant(true)
+                        true
+                    }
+                    Key.J -> {
+                        if (ev.type == KeyEventType.KeyDown) {
+                            if (ev.nativeKeyEvent.repeatCount == 0) startJog(backward = true)
+                        } else if (ev.type == KeyEventType.KeyUp) stopJog()
+                        true
+                    }
+                    Key.K -> {
+                        if (ev.type == KeyEventType.KeyDown) {
+                            if (ev.nativeKeyEvent.repeatCount == 0) startJog(backward = false)
+                        } else if (ev.type == KeyEventType.KeyUp) stopJog()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .focusable()
             .mediaGestures(
                 zoom = zoom,
-                onSwipe = { forward ->
-                    if (items.isNotEmpty()) {
-                        index = (index + if (forward) 1 else -1).coerceIn(0, items.size - 1)
-                    }
+                pageOffset = pageOffset,
+                scope = scope,
+                canPrev = { index > 0 },
+                canNext = { index < items.size - 1 },
+                onCommit = { forward -> goInstant(forward) },
+                onTap = {
+                    controlsVisible = !controlsVisible
+                    runCatching { focusRequester.requestFocus() }
                 },
-                onTap = { controlsVisible = !controlsVisible },
+                onDoubleTapNav = { forward -> goInstant(forward) },
             )
     ) {
         if (file == null) {
             Text("No media", Modifier.align(Alignment.Center), color = Color.Gray, fontSize = 14.sp)
         } else {
+            // Neighbors, parked just off-screen (±container width) and slid in via the page offset.
+            items.getOrNull(index - 1)?.let { prev ->
+                NeighborPreview(prev) { translationX = pageOffset.value - zoom.containerSize.width }
+            }
+            items.getOrNull(index + 1)?.let { next ->
+                NeighborPreview(next) { translationX = pageOffset.value + zoom.containerSize.width }
+            }
+
             val density = LocalDensity.current
             val fitted = zoom.fittedSize
             if (fitted.width > 0f && fitted.height > 0f) {
@@ -145,7 +250,7 @@ fun MediaPane(
                         .graphicsLayer {
                             scaleX = zoom.scale
                             scaleY = zoom.scale
-                            translationX = zoom.offset.x
+                            translationX = zoom.offset.x + pageOffset.value
                             translationY = zoom.offset.y
                         }
                 ) {
@@ -177,6 +282,26 @@ fun MediaPane(
     }
 }
 
+/** A fit-to-screen thumbnail of an adjacent item, positioned via [layer] (its page-offset translation). */
+@Composable
+private fun NeighborPreview(file: File, layer: GraphicsLayerScope.() -> Unit) {
+    val context = LocalContext.current
+    AsyncImage(
+        model = remember(file) {
+            ImageRequest.Builder(context)
+                .data(file)
+                .apply { if (file.isVideoFile()) videoFrameMillis(1000) }
+                .build()
+        },
+        contentDescription = null,
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer(layer),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoxScope.PaneOverlay(
     file: File,
@@ -228,24 +353,47 @@ private fun BoxScope.PaneOverlay(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color(0xCC000000))
-                .padding(horizontal = 8.dp, vertical = 2.dp),
+                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 28.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PaneButton(if (playing) "❚❚" else "▶") { player.playWhenReady = !player.playWhenReady }
-            Text(formatTime(position), color = Color.White, fontSize = 12.sp)
+            Box(
+                Modifier
+                    .background(Color(0xFF222428))
+                    .clickable { player.playWhenReady = !player.playWhenReady }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text(if (playing) "❚❚" else "▶", color = Color.White, fontSize = 16.sp)
+            }
+            Text(formatTime(position), color = Color.White, fontSize = 14.sp)
             Slider(
                 value = if (duration > 0) position.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
                 onValueChange = {
                     dragging = true
+                    // Fast keyframe seeks while scrubbing so frames track the finger.
+                    player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
                     position = it.toLong()
                     player.seekTo(it.toLong())
                 },
-                onValueChangeFinished = { dragging = false },
+                onValueChangeFinished = {
+                    // Exact seek on release so you land precisely where you let go.
+                    player.setSeekParameters(SeekParameters.DEFAULT)
+                    player.seekTo(position)
+                    dragging = false
+                },
                 valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                thumb = {
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .background(Color.White, CircleShape),
+                    )
+                },
             )
-            Text(formatTime(duration), color = Color.White, fontSize = 12.sp)
+            Text(formatTime(duration), color = Color.White, fontSize = 14.sp)
         }
     }
 }
