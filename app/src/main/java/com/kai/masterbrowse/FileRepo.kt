@@ -111,6 +111,69 @@ object FileRepo {
         }
     }
 
+    /**
+     * A path in [destDir] for something named [name] that doesn't collide with an
+     * existing entry: inserts " (1)", " (2)"… — before the extension for files,
+     * at the end for directories (a dot in a folder name is not an extension).
+     */
+    fun uniqueDest(destDir: File, name: String, isDir: Boolean): File {
+        var candidate = File(destDir, name)
+        if (!candidate.exists()) return candidate
+        val dot = name.lastIndexOf('.')
+        val (base, ext) = if (!isDir && dot > 0) name.substring(0, dot) to name.substring(dot) else name to ""
+        var n = 1
+        while (true) {
+            candidate = File(destDir, "$base ($n)$ext")
+            if (!candidate.exists()) return candidate
+            n++
+        }
+    }
+
+    /** Renames [file] in place. Rejects blank or path-separator names and existing siblings. */
+    fun rename(file: File, newName: String): Boolean {
+        if (newName.isBlank() || newName.contains('/')) return false
+        val dest = File(file.parentFile ?: return false, newName)
+        if (dest.exists()) return false
+        return file.renameTo(dest)
+    }
+
+    /** Copies a file or folder into [destDir] under a collision-free name. */
+    fun copyEntry(src: File, destDir: File): Boolean {
+        val dest = uniqueDest(destDir, src.name, src.isDirectory)
+        return try {
+            src.copyRecursively(dest, overwrite = false)
+        } catch (e: Exception) {
+            dest.deleteRecursively()
+            false
+        }
+    }
+
+    /**
+     * Moves a file or folder into [destDir]. Same-parent moves are a no-op;
+     * moving a folder into itself or a descendant is refused. Tries a rename
+     * first, falling back to copy+delete for cross-volume moves — the source is
+     * only deleted after the copy fully succeeds.
+     */
+    fun moveEntry(src: File, destDir: File): Boolean {
+        if (destDir.absolutePath == src.parentFile?.absolutePath) return true
+        if (destDir.absolutePath == src.absolutePath ||
+            destDir.absolutePath.startsWith(src.absolutePath + "/")
+        ) return false
+        val dest = uniqueDest(destDir, src.name, src.isDirectory)
+        if (src.renameTo(dest)) return true
+        return try {
+            if (src.copyRecursively(dest, overwrite = false)) {
+                src.deleteRecursively()
+            } else {
+                dest.deleteRecursively()
+                false
+            }
+        } catch (e: Exception) {
+            dest.deleteRecursively()
+            false
+        }
+    }
+
     /** Permanently deletes trash entries older than 30 days, on every mounted volume. */
     fun purgeTrash(context: Context, maxAgeMillis: Long = 30L * 24 * 60 * 60 * 1000) {
         val now = System.currentTimeMillis()

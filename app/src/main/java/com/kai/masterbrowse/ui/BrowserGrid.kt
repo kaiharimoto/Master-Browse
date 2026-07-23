@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -23,12 +25,14 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +54,9 @@ import com.kai.masterbrowse.SortMode
 import com.kai.masterbrowse.ThumbCache
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -68,6 +74,8 @@ fun BrowserGrid(
     sortMode: SortMode = Prefs.sortMode,
     sortDesc: Boolean = Prefs.sortDesc,
     aspectMode: Boolean = Prefs.aspectMode,
+    filter: String = "",
+    dirsOnly: Boolean = false,
     onOpenDir: (File) -> Unit,
     onOpenMedia: (List<File>, Int) -> Unit,
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
@@ -108,28 +116,91 @@ fun BrowserGrid(
             Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
             return@Box
         }
-        val (dirs, media) = e
+        val (dirs, media) = remember(e, filter, dirsOnly) {
+            val d = if (filter.isBlank()) e.first
+            else e.first.filter { it.name.contains(filter, ignoreCase = true) }
+            val m = when {
+                dirsOnly -> emptyList()
+                filter.isBlank() -> e.second
+                else -> e.second.filter { it.name.contains(filter, ignoreCase = true) }
+            }
+            d to m
+        }
         // Generate every video thumbnail in this folder up front (cached on disk),
         // so scrolling never waits on frame extraction — only on-screen JPEG decodes.
         LaunchedEffect(media) { ThumbCache.prefetch(media) }
         if (dirs.isEmpty() && media.isEmpty()) {
-            Text("Empty", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
+            Text(
+                if (filter.isBlank()) "Empty" else "No matches",
+                Modifier.align(Alignment.Center),
+                color = Color.DarkGray,
+                fontSize = 13.sp,
+            )
             return@Box
         }
+        val scope = rememberCoroutineScope()
+        val scrollKey = dir.absolutePath + if (aspectMode) "|A" else "|S"
         if (aspectMode) {
+            val listState = remember(scrollKey) {
+                val saved = ScrollMemory.get(scrollKey)
+                LazyListState(saved?.first ?: 0, saved?.second ?: 0)
+            }
+            DisposableEffect(scrollKey) {
+                onDispose {
+                    ScrollMemory.put(
+                        scrollKey,
+                        listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset,
+                    )
+                }
+            }
             JustifiedGrid(
                 dirs = dirs,
                 media = media,
                 targetRowHeightDp = tileDp,
                 thumbVersion = thumbVersion,
+                listState = listState,
                 onOpenDir = onOpenDir,
                 onOpenMedia = onOpenMedia,
                 dirMenu = dirMenu,
                 fileMenu = fileMenu,
             )
+            FastScrollThumb(
+                progress = {
+                    val info = listState.layoutInfo
+                    val range = info.totalItemsCount - info.visibleItemsInfo.size
+                    if (range <= 0) 0f else listState.firstVisibleItemIndex.toFloat() / range
+                },
+                thumbFrac = {
+                    val info = listState.layoutInfo
+                    if (info.totalItemsCount == 0) 1f
+                    else info.visibleItemsInfo.size.toFloat() / info.totalItemsCount
+                },
+                visible = {
+                    val info = listState.layoutInfo
+                    info.totalItemsCount > info.visibleItemsInfo.size * 3
+                },
+                onDragTo = { frac ->
+                    val info = listState.layoutInfo
+                    val range = (info.totalItemsCount - info.visibleItemsInfo.size).coerceAtLeast(0)
+                    scope.launch { listState.scrollToItem((frac * range).roundToInt()) }
+                },
+            )
         } else {
+            val gridState = remember(scrollKey) {
+                val saved = ScrollMemory.get(scrollKey)
+                LazyGridState(saved?.first ?: 0, saved?.second ?: 0)
+            }
+            DisposableEffect(scrollKey) {
+                onDispose {
+                    ScrollMemory.put(
+                        scrollKey,
+                        gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset,
+                    )
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(tileDp.dp),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -156,6 +227,27 @@ fun BrowserGrid(
                     )
                 }
             }
+            FastScrollThumb(
+                progress = {
+                    val info = gridState.layoutInfo
+                    val range = info.totalItemsCount - info.visibleItemsInfo.size
+                    if (range <= 0) 0f else gridState.firstVisibleItemIndex.toFloat() / range
+                },
+                thumbFrac = {
+                    val info = gridState.layoutInfo
+                    if (info.totalItemsCount == 0) 1f
+                    else info.visibleItemsInfo.size.toFloat() / info.totalItemsCount
+                },
+                visible = {
+                    val info = gridState.layoutInfo
+                    info.totalItemsCount > info.visibleItemsInfo.size * 3
+                },
+                onDragTo = { frac ->
+                    val info = gridState.layoutInfo
+                    val range = (info.totalItemsCount - info.visibleItemsInfo.size).coerceAtLeast(0)
+                    scope.launch { gridState.scrollToItem((frac * range).roundToInt()) }
+                },
+            )
         }
     }
 }

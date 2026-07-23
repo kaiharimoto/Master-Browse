@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
@@ -91,6 +93,7 @@ fun JustifiedGrid(
     media: List<File>,
     targetRowHeightDp: Float,
     thumbVersion: Int,
+    listState: LazyListState = rememberLazyListState(),
     onOpenDir: (File) -> Unit,
     onOpenMedia: (List<File>, Int) -> Unit,
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
@@ -124,6 +127,7 @@ fun JustifiedGrid(
             packRows(aspectList, containerW, targetRowHeightDp, gap)
         }
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(gap.dp),
             contentPadding = PaddingValues(gap.dp),

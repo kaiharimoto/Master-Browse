@@ -8,6 +8,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -47,6 +49,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +101,10 @@ fun MediaPane(
     val file = items.getOrNull(index)
     val zoom = remember { ZoomState() }
     var controlsVisible by remember { mutableStateOf(true) }
+    // Auto-hide: any interaction bumps the tick, restarting a 3s countdown; a
+    // finger resting on the seek bar (seekDragging) blocks the hide until release.
+    var interactionTick by remember { mutableIntStateOf(0) }
+    var seekDragging by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val pageOffset = remember { Animatable(0f) }
     val focusRequester = remember { FocusRequester() }
@@ -106,6 +114,11 @@ fun MediaPane(
         zoom.contentPixels = Size.Zero
     }
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+    LaunchedEffect(controlsVisible, interactionTick) {
+        if (!controlsVisible) return@LaunchedEffect
+        delay(3000)
+        if (!seekDragging) controlsVisible = false
+    }
 
     val isVideo = file?.isVideoFile() == true
     val player = if (file != null && isVideo) rememberVideoPlayer(file, zoom) else null
@@ -201,22 +214,26 @@ fun MediaPane(
                 when (ev.key) {
                     Key.DirectionLeft -> {
                         if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) goInstant(false)
+                        interactionTick++
                         true
                     }
                     Key.DirectionRight -> {
                         if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) goInstant(true)
+                        interactionTick++
                         true
                     }
                     Key.J -> {
                         if (ev.type == KeyEventType.KeyDown) {
                             if (ev.nativeKeyEvent.repeatCount == 0) startJog(backward = true)
                         } else if (ev.type == KeyEventType.KeyUp) stopJog()
+                        interactionTick++
                         true
                     }
                     Key.K -> {
                         if (ev.type == KeyEventType.KeyDown) {
                             if (ev.nativeKeyEvent.repeatCount == 0) startJog(backward = false)
                         } else if (ev.type == KeyEventType.KeyUp) stopJog()
+                        interactionTick++
                         true
                     }
                     else -> false
@@ -232,6 +249,7 @@ fun MediaPane(
                 onCommit = { forward -> goInstant(forward) },
                 onTap = {
                     controlsVisible = !controlsVisible
+                    interactionTick++
                     runCatching { focusRequester.requestFocus() }
                 },
                 onDoubleTapNav = { forward -> goInstant(forward) },
@@ -287,7 +305,11 @@ fun MediaPane(
                 Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
             }
             if (controlsVisible) {
-                PaneOverlay(file, index, items.size, zoom, player, extraButtons)
+                PaneOverlay(
+                    file, index, items.size, zoom, player, extraButtons,
+                    onInteraction = { interactionTick++ },
+                    onSeekDragChange = { seekDragging = it },
+                )
             }
         }
     }
@@ -329,12 +351,23 @@ private fun BoxScope.PaneOverlay(
     zoom: ZoomState,
     player: ExoPlayer?,
     extraButtons: @Composable RowScope.() -> Unit,
+    onInteraction: () -> Unit = {},
+    onSeekDragChange: (Boolean) -> Unit = {},
 ) {
+    // Observe (without consuming) any press on the control bars, so buttons the
+    // caller injects via extraButtons also reset the auto-hide countdown.
+    val notifyPress = Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            onInteraction()
+        }
+    }
     Row(
         Modifier
             .align(Alignment.TopCenter)
             .fillMaxWidth()
             .background(Color(0xCC000000))
+            .then(notifyPress)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -390,6 +423,7 @@ private fun BoxScope.PaneOverlay(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color(0xCC000000))
+                .then(notifyPress)
                 .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 28.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -410,6 +444,7 @@ private fun BoxScope.PaneOverlay(
                         // Pause for the scrub so playback doesn't fight the preview seeks;
                         // restored on release.
                         dragging = true
+                        onSeekDragChange(true)
                         scrubWasPlaying = player.playWhenReady
                         player.playWhenReady = false
                         player.setSeekParameters(SeekParameters.EXACT)
@@ -422,6 +457,8 @@ private fun BoxScope.PaneOverlay(
                     player.seekTo(position)
                     player.playWhenReady = scrubWasPlaying
                     dragging = false
+                    onSeekDragChange(false)
+                    onInteraction()
                 },
                 valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
                 modifier = Modifier

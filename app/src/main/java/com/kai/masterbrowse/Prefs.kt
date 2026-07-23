@@ -44,6 +44,17 @@ object Prefs {
             sp.edit().putBoolean("aspectMode", value).apply()
         }
 
+    /**
+     * Pinned folder paths in pin order. Stored newline-joined (getStringSet's
+     * returned set must never be mutated and loses order; paths with a literal
+     * newline aren't realistic for media folders).
+     */
+    var pinnedFolders: List<String>
+        get() = sp.getString("pins", "")!!.split('\n').filter { it.isNotBlank() }
+        set(value) {
+            sp.edit().putString("pins", value.joinToString("\n")).apply()
+        }
+
     fun folderThumb(folderPath: String): String? = sp.getString("thumb:$folderPath", null)
 
     fun setFolderThumb(folderPath: String, imagePath: String?) {
