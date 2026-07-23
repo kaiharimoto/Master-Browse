@@ -1,12 +1,17 @@
-Video playback fixes.
+Instant thumbnails and six usability features.
 
-## Fixes
-- **Seekbar scrubbing** — playback pauses while you drag, seeks are frame-accurate instead of keyframe-only, and a seek pump always jumps to the newest finger position. The preview shows far more frames and no longer stutters or lags behind a backlog of stale seeks.
-- **Background playback** — video (and its audio) now pauses when you switch apps, turn the screen off, or lose focus, and resumes on return only if it was playing before.
-- **Black video thumbnails** — tiles now grab the exact frame 25% into the video instead of the nearest keyframe to 1s, which rendered black for short clips and fade-from-black intros.
-- **J/K jog** — hold-to-rewind/fast-forward now advances an independent target position with exact seeks, so it no longer gets stuck looping the same snippet inside a long GOP.
+## Performance
+- **Video thumbnails load once and stay loaded** — each video's thumbnail is now extracted a single time into a persistent on-disk cache (and the whole folder pre-generates in the background when you open it). Scrolling a video-heavy folder is instant after the first visit, including across app restarts. The cache self-prunes past 2 GB, oldest first.
+
+## New
+- **Filename filter** — the `FILTER` toolbar button narrows the current folder's tiles as you type; opening media swipes through just the matches.
+- **Pinned folders** — long-press a folder → *Pin folder* (or `MENU` for the current one); the `★` button jumps to any pin.
+- **Rename / move / copy** — in every long-press menu. Move/copy opens a folder picker; name collisions get " (1)"-style suffixes, and internal ↔ SD moves are safe (copy-then-delete).
+- **Fast scroll + scroll memory** — drag the right-edge bar in long folders; every folder reopens at the spot you left it.
+- **Auto-hiding viewer controls** — the overlay disappears 3 s after your last touch/key (never mid-scrub); tap to bring it back.
+- **Help** — `MENU → Help` lists every gesture and key.
 
 ## Install
-⚠️ **This build is signed with a new key** (the previous signing keystore was not preserved), so it will **not** install over v1.2 — including via `MENU → Update from GitHub`. **Uninstall the old version once**, then sideload `master-browse-v1.3.apk` from below. Until a stable keystore is stored as the `RELEASE_KEYSTORE_B64` repo secret, each CI-built release is signed with a fresh key and needs this same uninstall step.
+⚠️ **This build is signed with a new key**, so it will **not** install over v1.2/v1.3 — including via `MENU → Update from GitHub`. **Uninstall the old version once**, then sideload `master-browse-v1.4.apk` from below. Until a stable keystore is stored as the `RELEASE_KEYSTORE_B64` repo secret, each CI-built release is signed with a fresh key and needs this same uninstall step.
 
-versionName 1.3 / versionCode 4 — min SDK 30, target SDK 35.
+versionName 1.4 / versionCode 5 — min SDK 30, target SDK 35.
