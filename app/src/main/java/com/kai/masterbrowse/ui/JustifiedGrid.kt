@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.kai.masterbrowse.ThumbCache
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -186,6 +187,15 @@ private fun imageAspect(file: File): Float {
 }
 
 private fun videoAspect(file: File): Float {
+    // Cached thumbnails are stored already rotated, so their bounds give the
+    // display aspect without opening the (much slower) video file.
+    ThumbCache.cachedThumb(file)?.let { thumb ->
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(thumb.absolutePath, opts)
+        if (opts.outWidth > 0 && opts.outHeight > 0) {
+            return opts.outWidth.toFloat() / opts.outHeight
+        }
+    }
     val retriever = MediaMetadataRetriever()
     try {
         retriever.setDataSource(file.absolutePath)

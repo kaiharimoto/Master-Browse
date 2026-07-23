@@ -36,5 +36,5 @@ Pushing a tag like `v1.2` triggers the GitHub Actions workflow, which builds a r
 ## Notes
 
 - Back button: exits split view → exits the viewer → walks up the folder tree → exits the app at the home folder.
-- Video thumbnails are cached in memory only, so the very first scroll through a video-heavy folder is slower than later visits.
+- Video thumbnails are extracted once per video into a persistent on-disk cache (pre-generated for the whole folder when you open it), so after the first visit they load instantly — including across app restarts. The cache lives in app storage and prunes itself past 2 GB, oldest first.
 - In the viewer, images are decoded at full resolution so pixel-perfect mode is truly 1:1.

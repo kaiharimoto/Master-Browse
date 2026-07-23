@@ -23,6 +23,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,7 @@ import coil.request.videoFramePercent
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
 import com.kai.masterbrowse.SortMode
+import com.kai.masterbrowse.ThumbCache
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -107,6 +109,9 @@ fun BrowserGrid(
             return@Box
         }
         val (dirs, media) = e
+        // Generate every video thumbnail in this folder up front (cached on disk),
+        // so scrolling never waits on frame extraction — only on-screen JPEG decodes.
+        LaunchedEffect(media) { ThumbCache.prefetch(media) }
         if (dirs.isEmpty() && media.isEmpty()) {
             Text("Empty", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
             return@Box
