@@ -1,17 +1,28 @@
 name: Build APK
 
-# Releases are built and signed LOCALLY (with the app's stable keystore, which is
-# intentionally not committed to this public repo), then uploaded to a GitHub release.
-# That keeps every published APK on the same signature so in-app updates install cleanly.
+# Builds the release APK on manual dispatch. If a `tag` input is given, it also
+# creates a GitHub release with the APK attached (notes come from
+# .github/release-notes.md).
 #
-# A CI build here would sign with a freshly generated, throwaway keystore and break that
-# signature chain, so this workflow no longer runs on tags and does not create releases.
-# It only builds a (differently-signed, debug-only) artifact on manual dispatch.
+# Signing: if the RELEASE_KEYSTORE_B64 repo secret is set (base64 of
+# app/release.keystore), every build here carries the same stable signature and
+# in-app updates install cleanly over previous releases. Without the secret, the
+# build auto-generates a fresh keystore, so the resulting APK needs a one-time
+# uninstall/reinstall on devices that have an older signature installed.
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.3). Empty = build artifact only, no release."
+        required: false
+        default: ""
+      versionCode:
+        description: "Android versionCode for this build (integer, must increase each release)"
+        required: false
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -24,11 +35,37 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Build release APK
-        run: ./gradlew assembleRelease --no-daemon
+      - name: Restore stable keystore from secret (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
+            echo "Restored stable keystore from RELEASE_KEYSTORE_B64 secret."
+          else
+            echo "No RELEASE_KEYSTORE_B64 secret set; a fresh keystore will be generated (new signature)."
+          fi
+
+      - name: Run unit tests and build release APK
+        run: |
+          ARGS=""
+          [ -n "${{ inputs.versionCode }}" ] && ARGS="$ARGS -PversionCode=${{ inputs.versionCode }}"
+          [ -n "${{ inputs.tag }}" ] && ARGS="$ARGS -PversionName=${{ inputs.tag }}"
+          ./gradlew testReleaseUnitTest assembleRelease --no-daemon $ARGS
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk
           path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Create GitHub release
+        if: ${{ inputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "master-browse-${{ inputs.tag }}.apk"
+          gh release create "${{ inputs.tag }}" "master-browse-${{ inputs.tag }}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Master Browse ${{ inputs.tag }}" \
+            --notes-file .github/release-notes.md
