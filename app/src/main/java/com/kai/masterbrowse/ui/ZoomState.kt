@@ -5,6 +5,7 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
@@ -113,6 +114,9 @@ class ZoomState {
  *   finger, the neighbor peeks in, and on release it snaps to next/previous (past 25% width or a
  *   flick) or springs back. Drags already consumed by a child (the seek bar) are ignored, so
  *   scrubbing a video no longer also pages.
+ * - press-and-hold (when [canHoldScrub]): [onHoldStart] with the pressed half (right = forward)
+ *   until release → [onHoldEnd]. Movement, a second finger, or a child consuming the pointer
+ *   cancels the hold and falls through to the gestures above.
  */
 @Composable
 fun Modifier.mediaGestures(
@@ -124,12 +128,18 @@ fun Modifier.mediaGestures(
     onCommit: (forward: Boolean) -> Unit,
     onTap: () -> Unit,
     onDoubleTapNav: (forward: Boolean) -> Unit,
+    canHoldScrub: () -> Boolean = { false },
+    onHoldStart: (forward: Boolean) -> Unit = {},
+    onHoldEnd: () -> Unit = {},
 ): Modifier {
     val tapCb = rememberUpdatedState(onTap)
     val doubleTapCb = rememberUpdatedState(onDoubleTapNav)
     val commitCb = rememberUpdatedState(onCommit)
     val canPrevCb = rememberUpdatedState(canPrev)
     val canNextCb = rememberUpdatedState(canNext)
+    val canHoldCb = rememberUpdatedState(canHoldScrub)
+    val holdStartCb = rememberUpdatedState(onHoldStart)
+    val holdEndCb = rememberUpdatedState(onHoldEnd)
     return this
         .pointerInput(zoom) {
             detectTapGestures(
@@ -142,7 +152,28 @@ fun Modifier.mediaGestures(
         }
         .pointerInput(zoom) {
             awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (canHoldCb.value()) {
+                    // Wait for a long-press; movement past slop, a second finger, release, or a
+                    // child consuming the pointer cancels it and falls through to normal handling.
+                    val longPress = awaitLongPressOrCancellation(down.id)
+                    if (longPress != null) {
+                        holdStartCb.value(down.position.x > size.width / 2f)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() } // suppress tap/paging
+                                if (event.changes.none { it.pressed }) break
+                            }
+                        } finally {
+                            holdEndCb.value()
+                        }
+                        return@awaitEachGesture
+                    }
+                    // Cancelled by the pointer lifting: nothing left to track this gesture —
+                    // the tap detector above owns taps/double-taps.
+                    if (currentEvent.changes.none { it.pressed }) return@awaitEachGesture
+                }
                 val startOffset = pageOffset.value
                 var total = Offset.Zero
                 var pastSlop = false

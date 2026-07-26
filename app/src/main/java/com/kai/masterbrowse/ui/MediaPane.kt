@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +64,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
@@ -121,7 +123,11 @@ fun MediaPane(
     }
 
     val isVideo = file?.isVideoFile() == true
-    val player = if (file != null && isVideo) rememberVideoPlayer(file, zoom) else null
+    // Keeps the thumbnail placeholder up until the video has actually drawn a frame.
+    var videoFrameReady by remember(file) { mutableStateOf(false) }
+    val player = if (file != null && isVideo) {
+        rememberVideoPlayer(file, zoom, onFirstFrame = { videoFrameReady = true })
+    } else null
 
     val painter = if (file != null && !isVideo) {
         rememberAsyncImagePainter(
@@ -202,7 +208,54 @@ fun MediaPane(
             it.playWhenReady = jogWasPlaying
         }
     }
-    DisposableEffect(player) { onDispose { jogJob?.cancel(); jogJob = null } }
+
+    // Press-and-hold on the right/left half: 3x fast-forward (real playback, so audio
+    // stays, time-stretched) / 3x rewind (exact-seek pump — decoders can't run backward,
+    // so no audio there).
+    var holdRewindJob by remember { mutableStateOf<Job?>(null) }
+    var holdWasPlaying by remember { mutableStateOf(true) }
+    var holdForward by remember { mutableStateOf(true) }
+    fun startHoldScrub(forward: Boolean) {
+        val p = player ?: return
+        interactionTick++
+        holdForward = forward
+        holdWasPlaying = p.playWhenReady
+        if (forward) {
+            p.playbackParameters = PlaybackParameters(3f)
+            p.playWhenReady = true
+        } else {
+            p.setSeekParameters(SeekParameters.EXACT)
+            p.playWhenReady = false
+            holdRewindJob = scope.launch {
+                var target = p.currentPosition
+                while (isActive) {
+                    target = (target - 180L).coerceAtLeast(0L) // 3x realtime, 60ms ticks
+                    if (p.playbackState == Player.STATE_READY) p.seekTo(target)
+                    delay(60)
+                }
+            }
+        }
+    }
+    fun stopHoldScrub() {
+        val p = player ?: return
+        interactionTick++
+        if (holdForward) {
+            p.playbackParameters = PlaybackParameters.DEFAULT
+        } else {
+            holdRewindJob?.cancel()
+            holdRewindJob = null
+            p.setSeekParameters(SeekParameters.DEFAULT)
+        }
+        p.playWhenReady = holdWasPlaying
+    }
+    DisposableEffect(player) {
+        onDispose {
+            jogJob?.cancel()
+            jogJob = null
+            holdRewindJob?.cancel()
+            holdRewindJob = null
+        }
+    }
 
     Box(
         modifier
@@ -253,6 +306,9 @@ fun MediaPane(
                     runCatching { focusRequester.requestFocus() }
                 },
                 onDoubleTapNav = { forward -> goInstant(forward) },
+                canHoldScrub = { player != null },
+                onHoldStart = { forward -> startHoldScrub(forward) },
+                onHoldEnd = { stopHoldScrub() },
             )
     ) {
         if (file == null) {
@@ -303,6 +359,17 @@ fun MediaPane(
                 }
             } else {
                 Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
+            }
+            // Keep the (memory-cached) thumbnail on screen until the real content can
+            // actually draw, so committing a swipe never flashes black/"Loading…" —
+            // the preview simply persists and then dissolves into the live media.
+            val contentReady = if (isVideo) {
+                videoFrameReady
+            } else {
+                painter?.state is AsyncImagePainter.State.Success && zoom.fittedSize != Size.Zero
+            }
+            if (!contentReady) {
+                NeighborPreview(file) { translationX = pageOffset.value }
             }
             if (controlsVisible) {
                 PaneOverlay(
@@ -478,7 +545,11 @@ private fun BoxScope.PaneOverlay(
 }
 
 @Composable
-private fun rememberVideoPlayer(file: File, zoom: ZoomState): ExoPlayer {
+private fun rememberVideoPlayer(
+    file: File,
+    zoom: ZoomState,
+    onFirstFrame: () -> Unit = {},
+): ExoPlayer {
     val context = LocalContext.current
     val player = remember(file) {
         ExoPlayer.Builder(context).build().apply {
@@ -488,12 +559,17 @@ private fun rememberVideoPlayer(file: File, zoom: ZoomState): ExoPlayer {
             prepare()
         }
     }
+    val firstFrameCb = rememberUpdatedState(onFirstFrame)
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
                     zoom.contentPixels = Size(videoSize.width.toFloat(), videoSize.height.toFloat())
                 }
+            }
+
+            override fun onRenderedFirstFrame() {
+                firstFrameCb.value()
             }
         }
         player.addListener(listener)

@@ -85,6 +85,7 @@ private fun HelpContent(onDismiss: () -> Unit) {
         HelpRow("Pinch", "Zoom; drag to pan while zoomed")
         HelpRow("1:1 / FIT", "Pixel-perfect zoom vs fit-to-screen")
         HelpRow("SPLIT", "Two items side by side; PICK re-chooses the right one")
+        HelpRow("Hold left / right half", "Rewind / fast-forward video at 3× until released")
         HelpRow("Drag seek bar", "Live video scrubbing, frame-accurate")
         HelpRow("← / → keys", "Previous / next item")
         HelpRow("Hold J / K", "Rewind / fast-forward video, accelerating")
