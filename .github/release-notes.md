@@ -1,17 +1,12 @@
-Instant thumbnails and six usability features.
+Smoother viewer: seamless swipes and hold-to-scrub.
 
-## Performance
-- **Video thumbnails load once and stay loaded** — each video's thumbnail is now extracted a single time into a persistent on-disk cache (and the whole folder pre-generates in the background when you open it). Scrolling a video-heavy folder is instant after the first visit, including across app restarts. The cache self-prunes past 2 GB, oldest first.
+## Improved
+- **No more flash when swiping** — committing a swipe (or opening an item) used to flash black/"Loading…" between the sliding thumbnail and the real media. The thumbnail now stays on screen until the content can actually draw — the first rendered frame for videos, the finished full-resolution decode for photos — then swaps in place. Photos just appear to sharpen; videos go thumbnail → playback with no black gap.
 
 ## New
-- **Filename filter** — the `FILTER` toolbar button narrows the current folder's tiles as you type; opening media swipes through just the matches.
-- **Pinned folders** — long-press a folder → *Pin folder* (or `MENU` for the current one); the `★` button jumps to any pin.
-- **Rename / move / copy** — in every long-press menu. Move/copy opens a folder picker; name collisions get " (1)"-style suffixes, and internal ↔ SD moves are safe (copy-then-delete).
-- **Fast scroll + scroll memory** — drag the right-edge bar in long folders; every folder reopens at the spot you left it.
-- **Auto-hiding viewer controls** — the overlay disappears 3 s after your last touch/key (never mid-scrub); tap to bring it back.
-- **Help** — `MENU → Help` lists every gesture and key.
+- **Hold to scrub** — press and hold the **right half** of a video to fast-forward at **3× with audio** (real playback, pitch-corrected) until you let go; playback then returns to normal speed and your previous play/pause state. Hold the **left half** to rewind at 3× (video only — Android decoders can't run backward, so rewind has no audio). Small movements cancel into the usual gestures; taps, double-taps, swipes, pinch, and the seek bar all behave as before. Listed in `MENU → Help`.
 
 ## Install
-⚠️ **This build is signed with a new key**, so it will **not** install over v1.2/v1.3 — including via `MENU → Update from GitHub`. **Uninstall the old version once**, then sideload `master-browse-v1.4.apk` from below. Until a stable keystore is stored as the `RELEASE_KEYSTORE_B64` repo secret, each CI-built release is signed with a fresh key and needs this same uninstall step.
+⚠️ **This build is signed with a new key**, so it will **not** install over earlier versions — including via `MENU → Update from GitHub`. **Uninstall the old version once**, then sideload `master-browse-v1.5.apk` from below. Until a stable keystore is stored as the `RELEASE_KEYSTORE_B64` repo secret, each CI-built release is signed with a fresh key and needs this same uninstall step.
 
-versionName 1.4 / versionCode 5 — min SDK 30, target SDK 35.
+versionName 1.5 / versionCode 6 — min SDK 30, target SDK 35.
