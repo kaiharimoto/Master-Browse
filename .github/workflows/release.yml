@@ -4,11 +4,10 @@ name: Build APK
 # creates a GitHub release with the APK attached (notes come from
 # .github/release-notes.md).
 #
-# Signing: if the RELEASE_KEYSTORE_B64 repo secret is set (base64 of
-# app/release.keystore), every build here carries the same stable signature and
-# in-app updates install cleanly over previous releases. Without the secret, the
-# build auto-generates a fresh keystore, so the resulting APK needs a one-time
-# uninstall/reinstall on devices that have an older signature installed.
+# Signing: the stable keystore is committed at app/release.keystore (deliberate
+# tradeoff for this personal app — see README), so every build signs identically
+# and in-app updates install cleanly. A RELEASE_KEYSTORE_B64 repo secret, if
+# ever set, takes precedence by overwriting that file before the build.
 on:
   workflow_dispatch:
     inputs:
