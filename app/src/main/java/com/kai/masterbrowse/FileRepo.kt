@@ -63,19 +63,26 @@ object FileRepo {
         (dir.listFiles() ?: emptyArray()).filter { it.isMediaFile() }.sortedWith(nameOrder)
 
     /**
-     * Thumbnail source for a folder tile: the user-chosen image if set,
-     * otherwise the first media file inside (checking one level of subfolders as fallback).
+     * Thumbnail source for a folder tile: the user-chosen image if set, otherwise the
+     * first media file found inside — searching depth-first up to four folder levels
+     * deep (bounded to a few hundred directories so a huge tree can't stall a tile).
      */
     fun thumbFor(dir: File): File? {
         Prefs.folderThumb(dir.absolutePath)?.let {
             val f = File(it)
             if (f.exists()) return f
         }
+        return firstMediaWithin(dir, depth = 4, budget = intArrayOf(300))
+    }
+
+    private fun firstMediaWithin(dir: File, depth: Int, budget: IntArray): File? {
+        if (depth < 0 || budget[0] <= 0) return null
+        budget[0]--
         val kids = dir.listFiles()?.sortedWith(nameOrder) ?: return null
         kids.firstOrNull { it.isMediaFile() }?.let { return it }
-        for (sub in kids.filter { it.isDirectory && it.name != TRASH_DIR }.take(12)) {
-            val subKids = sub.listFiles() ?: continue
-            subKids.sortedWith(nameOrder).firstOrNull { it.isMediaFile() }?.let { return it }
+        for (sub in kids) {
+            if (!sub.isDirectory || sub.name == TRASH_DIR) continue
+            firstMediaWithin(sub, depth - 1, budget)?.let { return it }
         }
         return null
     }

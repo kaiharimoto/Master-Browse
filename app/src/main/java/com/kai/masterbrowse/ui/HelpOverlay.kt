@@ -69,7 +69,9 @@ private fun HelpContent(onDismiss: () -> Unit) {
 
         HelpSection("BROWSER")
         HelpRow("Tap tile", "Open folder, or open media fullscreen")
-        HelpRow("Long-press tile", "Menu: thumbnail, pin, rename, move, copy, delete")
+        HelpRow("Long-press tile", "Menu: thumbnail, pin, select, rename, move, copy, delete")
+        HelpRow("Long-press → Select", "Multi-select mode: tap tiles to add, then MOVE / COPY / DELETE them together")
+        HelpRow("MENU → Hide filenames", "Toggle the name bar on tiles")
         HelpRow("Pinch grid", "Grow / shrink the tiles (remembered)")
         HelpRow("Drag right-edge bar", "Fast-scroll through a long folder")
         HelpRow("SORT, tap again", "Same sort key twice flips the direction")

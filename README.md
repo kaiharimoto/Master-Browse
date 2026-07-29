@@ -20,7 +20,9 @@ A utilitarian, tile-based folder-hierarchy media browser for Android tablets (bu
 - **In-app updates** — `MENU → Update from GitHub` fetches the latest GitHub release of this repo and downloads/installs its APK asset. No automatic checks.
 - **Filename filter** — the `FILTER` button opens a box that narrows the current folder's tiles as you type (case-insensitive); opening media then swipes through just the matches.
 - **Pinned folders** — long-press a folder tile (or `MENU` for the current folder) → *Pin folder*; the `★` button lists pins for one-tap jumps. Missing/unmounted pins are dimmed and unpin when tapped.
-- **Rename / move / copy** — in every long-press menu. Move/copy opens a full-screen destination folder picker; names get " (1)"-style suffixes on collision, and cross-volume moves (internal ↔ SD) copy-then-delete safely.
+- **Rename / move / copy** — in every long-press menu. Move/copy opens a full-screen destination folder picker (UP/back walk to ancestors, so you can move up the tree too); names get " (1)"-style suffixes on collision, and cross-volume moves (internal ↔ SD) copy-then-delete safely.
+- **Multi-select** — long-press → *Select*, then tap tiles to build a selection and MOVE / COPY / DELETE them in one go.
+- **Filename toggle** — `MENU → Hide filenames` for a cleaner grid.
 - **Fast scroll + scroll memory** — a right-edge scrollbar thumb appears in long folders for drag-to-jump, and every folder remembers its scroll position (going UP, drilling back in, or returning from the viewer).
 - **Auto-hiding viewer controls** — the viewer overlay disappears 3 s after the last touch/key (never mid-scrub); tap to bring it back.
 - **Help** — `MENU → Help` shows a cheat sheet of every gesture and key.

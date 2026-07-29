@@ -37,6 +37,13 @@ object Prefs {
             sp.edit().putBoolean("sortDesc", value).apply()
         }
 
+    /** Show the filename bar on tiles. */
+    var showNames: Boolean
+        get() = sp.getBoolean("showNames", true)
+        set(value) {
+            sp.edit().putBoolean("showNames", value).apply()
+        }
+
     /** True = justified true-aspect-ratio tiles; false = square tile grid. */
     var aspectMode: Boolean
         get() = sp.getBoolean("aspectMode", false)

@@ -38,7 +38,12 @@ fun FolderPicker(
     onSelect: (File) -> Unit,
 ) {
     var pickDir by remember { mutableStateOf(start) }
-    BackHandler(onBack = onCancel)
+    // Back walks up the folder tree (destinations can be anywhere, including ancestors);
+    // CANCEL aborts, and back at the filesystem root also aborts.
+    BackHandler {
+        val parent = FileRepo.parentOf(pickDir)
+        if (parent != null) pickDir = parent else onCancel()
+    }
     Column(
         Modifier
             .fillMaxSize()

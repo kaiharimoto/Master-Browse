@@ -94,6 +94,8 @@ fun JustifiedGrid(
     targetRowHeightDp: Float,
     thumbVersion: Int,
     listState: LazyListState = rememberLazyListState(),
+    showNames: Boolean = true,
+    selectedPaths: Set<String> = emptySet(),
     onOpenDir: (File) -> Unit,
     onOpenMedia: (List<File>, Int) -> Unit,
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
@@ -150,6 +152,8 @@ fun JustifiedGrid(
                             modifier = Modifier
                                 .width((a * row.height).dp)
                                 .height(row.height.dp),
+                            showNames = showNames,
+                            selected = entry.file.absolutePath in selectedPaths,
                         )
                     }
                 }

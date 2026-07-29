@@ -5,7 +5,6 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
@@ -153,11 +152,24 @@ fun Modifier.mediaGestures(
         .pointerInput(zoom) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
+                // Hold-to-scrub arming window: the hold fires only if one finger stays within
+                // touch slop, unconsumed, for the long-press timeout. Movement, a second finger,
+                // release, or child consumption falls through to normal handling, seeding the
+                // paging total with any sub-slop movement seen meanwhile. (This is hand-rolled
+                // because awaitLongPressOrCancellation ignores movement, which turned every
+                // slower-than-500ms swipe on a video into a hold.)
+                var preTotal = Offset.Zero
                 if (canHoldCb.value()) {
-                    // Wait for a long-press; movement past slop, a second finger, release, or a
-                    // child consuming the pointer cancels it and falls through to normal handling.
-                    val longPress = awaitLongPressOrCancellation(down.id)
-                    if (longPress != null) {
+                    val timedOut = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.changes.count { it.pressed } != 1) return@withTimeoutOrNull
+                            if (event.changes.any { it.isConsumed }) return@withTimeoutOrNull
+                            preTotal += event.calculatePan()
+                            if (preTotal.getDistance() > viewConfiguration.touchSlop) return@withTimeoutOrNull
+                        }
+                    } == null
+                    if (timedOut) {
                         holdStartCb.value(down.position.x > size.width / 2f)
                         try {
                             while (true) {
@@ -170,12 +182,12 @@ fun Modifier.mediaGestures(
                         }
                         return@awaitEachGesture
                     }
-                    // Cancelled by the pointer lifting: nothing left to track this gesture —
-                    // the tap detector above owns taps/double-taps.
+                    // Armed window ended with the pointer up: it was a tap — the tap detector
+                    // above owns taps/double-taps.
                     if (currentEvent.changes.none { it.pressed }) return@awaitEachGesture
                 }
                 val startOffset = pageOffset.value
-                var total = Offset.Zero
+                var total = preTotal
                 var pastSlop = false
                 var pinched = false
                 var paging = false

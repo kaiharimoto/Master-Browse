@@ -3,6 +3,7 @@ package com.kai.masterbrowse.ui
 import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -76,6 +77,8 @@ fun BrowserGrid(
     aspectMode: Boolean = Prefs.aspectMode,
     filter: String = "",
     dirsOnly: Boolean = false,
+    showNames: Boolean = true,
+    selectedPaths: Set<String> = emptySet(),
     onOpenDir: (File) -> Unit,
     onOpenMedia: (List<File>, Int) -> Unit,
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
@@ -97,7 +100,7 @@ fun BrowserGrid(
                             pinching = true
                             val zoomChange = event.calculateZoom()
                             if (zoomChange != 1f) {
-                                tileDp = (tileDp * zoomChange).coerceIn(70f, 400f)
+                                tileDp = (tileDp * zoomChange).coerceIn(70f, 1200f)
                             }
                             event.changes.forEach { it.consume() }
                         }
@@ -159,6 +162,8 @@ fun BrowserGrid(
                 targetRowHeightDp = tileDp,
                 thumbVersion = thumbVersion,
                 listState = listState,
+                showNames = showNames,
+                selectedPaths = selectedPaths,
                 onOpenDir = onOpenDir,
                 onOpenMedia = onOpenMedia,
                 dirMenu = dirMenu,
@@ -214,6 +219,8 @@ fun BrowserGrid(
                         onClick = { onOpenDir(d) },
                         menu = dirMenu?.invoke(d),
                         modifier = Modifier.aspectRatio(1f),
+                        showNames = showNames,
+                        selected = d.absolutePath in selectedPaths,
                     )
                 }
                 itemsIndexed(media, key = { _, f -> "f:" + f.absolutePath }) { i, f ->
@@ -224,6 +231,8 @@ fun BrowserGrid(
                         onClick = { onOpenMedia(media, i) },
                         menu = fileMenu?.invoke(f),
                         modifier = Modifier.aspectRatio(1f),
+                        showNames = showNames,
+                        selected = f.absolutePath in selectedPaths,
                     )
                 }
             }
@@ -266,6 +275,8 @@ fun TileContent(
     onClick: () -> Unit,
     menu: List<Pair<String, () -> Unit>>?,
     modifier: Modifier = Modifier,
+    showNames: Boolean = true,
+    selected: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(
@@ -315,21 +326,35 @@ fun TileContent(
                 fontSize = 12.sp,
             )
         }
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(Color(0xB3000000))
-                .padding(horizontal = 6.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isDir) Text("▸ ", color = Color(0xFF9BA3AE), fontSize = 12.sp)
+        if (showNames) {
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isDir) Text("▸ ", color = Color(0xFF9BA3AE), fontSize = 12.sp)
+                Text(
+                    file.name,
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (selected) {
+            Box(Modifier.fillMaxSize().border(3.dp, Color(0xFF4C8DFF)))
             Text(
-                file.name,
+                "✓",
+                Modifier
+                    .align(Alignment.TopStart)
+                    .background(Color(0xFF4C8DFF))
+                    .padding(horizontal = 7.dp, vertical = 2.dp),
                 color = Color.White,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                fontSize = 13.sp,
             )
         }
         if (!menu.isNullOrEmpty()) {

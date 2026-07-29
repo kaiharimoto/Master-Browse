@@ -42,7 +42,10 @@ private object VideoThumbInterceptor : Interceptor {
     override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
         val data = chain.request.data
         if (data is File && data.isVideoFile()) {
-            val thumb = withContext(Dispatchers.IO) { ThumbCache.getOrCreate(data) }
+            // Fast path: an existing cache entry is just a stat check, so skip the dispatcher
+            // hop — that hop cost already-cached thumbnails their synchronous first-frame draw.
+            val thumb = ThumbCache.cachedThumb(data)
+                ?: withContext(Dispatchers.IO) { ThumbCache.getOrCreate(data) }
             if (thumb != null) {
                 return chain.proceed(chain.request.newBuilder().data(thumb).build())
             }

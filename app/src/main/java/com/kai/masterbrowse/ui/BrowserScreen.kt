@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,7 +61,7 @@ fun BrowserScreen(
     var pickThumbFor by remember { mutableStateOf<File?>(null) }
     var thumbVersion by remember { mutableIntStateOf(0) }
     var menuOpen by remember { mutableStateOf(false) }
-    var deleteTarget by remember { mutableStateOf<File?>(null) }
+    var deleteTargets by remember { mutableStateOf<List<File>?>(null) }
     var showUpdate by remember { mutableStateOf(false) }
     var sortMode by remember { mutableStateOf(Prefs.sortMode) }
     var sortDesc by remember { mutableStateOf(Prefs.sortDesc) }
@@ -72,8 +73,18 @@ fun BrowserScreen(
     var pinsOpen by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<File?>(null) }
-    // Pending move/copy: the item, and whether it's a copy (true) or move (false).
-    var transfer by remember { mutableStateOf<Pair<File, Boolean>?>(null) }
+    var showNames by remember { mutableStateOf(Prefs.showNames) }
+    // Pending move/copy: the items, and whether it's a copy (true) or move (false).
+    var transfer by remember { mutableStateOf<Pair<List<File>, Boolean>?>(null) }
+    // Multi-select mode: while active, tapping tiles toggles membership instead of opening.
+    var selecting by remember(dir) { mutableStateOf(false) }
+    val selected = remember(dir) { mutableStateListOf<String>() }
+
+    fun toggleSelect(f: File) {
+        val p = f.absolutePath
+        if (!selected.remove(p)) selected.add(p)
+        if (selected.isEmpty()) selecting = false
+    }
 
     fun setPins(p: List<String>) {
         Prefs.pinnedFolders = p
@@ -84,24 +95,25 @@ fun BrowserScreen(
         setPins(if (path in pinned) pinned - path else pinned + path)
     }
 
-    transfer?.let { (src, isCopy) ->
+    transfer?.let { (files, isCopy) ->
+        val what = if (files.size == 1) "\"${files.first().name}\"" else "${files.size} items"
         FolderPicker(
-            title = (if (isCopy) "Copy" else "Move") + " \"${src.name}\" to…",
+            title = (if (isCopy) "Copy" else "Move") + " $what to…",
             start = dir,
             onCancel = { transfer = null },
             onSelect = { dest ->
                 transfer = null
+                selecting = false
+                selected.clear()
                 Toast.makeText(context, if (isCopy) "Copying…" else "Moving…", Toast.LENGTH_SHORT).show()
                 scope.launch {
-                    val ok = withContext(Dispatchers.IO) {
-                        if (isCopy) FileRepo.copyEntry(src, dest) else FileRepo.moveEntry(src, dest)
+                    val failed = withContext(Dispatchers.IO) {
+                        files.count {
+                            !(if (isCopy) FileRepo.copyEntry(it, dest) else FileRepo.moveEntry(it, dest))
+                        }
                     }
-                    if (!ok) {
-                        Toast.makeText(
-                            context,
-                            if (isCopy) "Copy failed" else "Move failed",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                    if (failed > 0) {
+                        Toast.makeText(context, "$failed of ${files.size} failed", Toast.LENGTH_SHORT).show()
                     }
                     thumbVersion++
                 }
@@ -122,8 +134,11 @@ fun BrowserScreen(
         sortOpen = false
     }
 
-    BackHandler(enabled = pickThumbFor != null || dir.absolutePath != home.absolutePath) {
-        if (pickThumbFor != null) {
+    BackHandler(enabled = selecting || pickThumbFor != null || dir.absolutePath != home.absolutePath) {
+        if (selecting) {
+            selecting = false
+            selected.clear()
+        } else if (pickThumbFor != null) {
             pickThumbFor = null
         } else {
             FileRepo.parentOf(dir)?.let(onDirChange) ?: onDirChange(home)
@@ -247,6 +262,14 @@ fun BrowserScreen(
                         },
                     )
                     DropdownMenuItem(
+                        text = { Text(if (showNames) "Hide filenames" else "Show filenames") },
+                        onClick = {
+                            menuOpen = false
+                            showNames = !showNames
+                            Prefs.showNames = showNames
+                        },
+                    )
+                    DropdownMenuItem(
                         text = { Text("Help") },
                         onClick = {
                             menuOpen = false
@@ -316,6 +339,28 @@ fun BrowserScreen(
             }
         }
 
+        if (selecting) {
+            Row(
+                Modifier.fillMaxWidth().background(Color(0xFF1B2437)).padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "${selected.size} selected — tap tiles to add/remove",
+                    Modifier.weight(1f),
+                    color = Color(0xFF9FBCF2),
+                    fontSize = 13.sp,
+                )
+                PaneButton("MOVE") { if (selected.isNotEmpty()) transfer = selected.map(::File) to false }
+                PaneButton("COPY") { if (selected.isNotEmpty()) transfer = selected.map(::File) to true }
+                PaneButton("DELETE") { if (selected.isNotEmpty()) deleteTargets = selected.map(::File) }
+                PaneButton("CANCEL") {
+                    selecting = false
+                    selected.clear()
+                }
+            }
+        }
+
         BrowserGrid(
             dir = dir,
             thumbVersion = thumbVersion,
@@ -323,10 +368,14 @@ fun BrowserScreen(
             sortDesc = sortDesc,
             aspectMode = aspectMode,
             filter = filter,
-            onOpenDir = onDirChange,
+            showNames = showNames,
+            selectedPaths = selected.toSet(),
+            onOpenDir = { if (selecting) toggleSelect(it) else onDirChange(it) },
             onOpenMedia = { list, i ->
                 val target = pickThumbFor
-                if (target != null) {
+                if (selecting) {
+                    toggleSelect(list[i])
+                } else if (target != null) {
                     Prefs.setFolderThumb(target.absolutePath, list[i].absolutePath)
                     pickThumbFor = null
                     thumbVersion++
@@ -348,10 +397,14 @@ fun BrowserScreen(
                     (if (d.absolutePath in pinned) "Unpin folder" else "Pin folder") to {
                         togglePin(d.absolutePath)
                     },
+                    "Select" to {
+                        selecting = true
+                        toggleSelect(d)
+                    },
                     "Rename" to { renameTarget = d },
-                    "Move…" to { transfer = d to false },
-                    "Copy…" to { transfer = d to true },
-                    "Delete" to { deleteTarget = d },
+                    "Move…" to { transfer = listOf(d) to false },
+                    "Copy…" to { transfer = listOf(d) to true },
+                    "Delete" to { deleteTargets = listOf(d) },
                 )
             },
             fileMenu = { f ->
@@ -360,37 +413,46 @@ fun BrowserScreen(
                         Prefs.setFolderThumb(dir.absolutePath, f.absolutePath)
                         thumbVersion++
                     },
+                    "Select" to {
+                        selecting = true
+                        toggleSelect(f)
+                    },
                     "Rename" to { renameTarget = f },
-                    "Move…" to { transfer = f to false },
-                    "Copy…" to { transfer = f to true },
-                    "Delete" to { deleteTarget = f },
+                    "Move…" to { transfer = listOf(f) to false },
+                    "Copy…" to { transfer = listOf(f) to true },
+                    "Delete" to { deleteTargets = listOf(f) },
                 )
             },
         )
     }
 
-    deleteTarget?.let { target ->
+    deleteTargets?.let { targets ->
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
+            onDismissRequest = { deleteTargets = null },
             title = { Text("Delete") },
             text = {
+                val what = if (targets.size == 1) "\"${targets.first().name}\"" else "${targets.size} items"
                 Text(
-                    "Move \"${target.name}\" to trash?\n\n" +
+                    "Move $what to trash?\n\n" +
                         "Trashed items are kept in .MasterBrowseTrash for 30 days, then deleted permanently."
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    deleteTarget = null
+                    deleteTargets = null
+                    selecting = false
+                    selected.clear()
                     scope.launch {
-                        val ok = withContext(Dispatchers.IO) { FileRepo.moveToTrash(target) }
-                        if (!ok) Toast.makeText(context, "Delete failed", Toast.LENGTH_SHORT).show()
+                        val failed = withContext(Dispatchers.IO) { targets.count { !FileRepo.moveToTrash(it) } }
+                        if (failed > 0) {
+                            Toast.makeText(context, "$failed of ${targets.size} failed", Toast.LENGTH_SHORT).show()
+                        }
                         thumbVersion++
                     }
                 }) { Text("DELETE") }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("CANCEL") }
+                TextButton(onClick = { deleteTargets = null }) { Text("CANCEL") }
             },
         )
     }

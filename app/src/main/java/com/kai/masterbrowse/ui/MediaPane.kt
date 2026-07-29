@@ -1,5 +1,7 @@
 package com.kai.masterbrowse.ui
 
+import android.content.Context
+import android.graphics.drawable.BitmapDrawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.view.TextureView
@@ -31,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,6 +47,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -72,7 +77,9 @@ import androidx.media3.exoplayer.SeekParameters
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import coil.imageLoader
 import coil.request.ImageRequest
+import coil.request.SuccessResult
 import coil.request.videoFrameOption
 import coil.request.videoFramePercent
 import com.kai.masterbrowse.isVideoFile
@@ -116,6 +123,24 @@ fun MediaPane(
         zoom.contentPixels = Size.Zero
     }
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+
+    // Pre-decoded fit-to-screen previews of the current item and its neighbors, keyed by
+    // path. Drawing these as plain Images (no async request) is what lets swipe previews
+    // and the post-commit placeholder appear on the very first frame with no flash: when
+    // the index changes, the new current item's bitmap is already in this map because it
+    // was just a neighbor.
+    val previewContext = LocalContext.current
+    val previewBitmaps = remember { mutableStateMapOf<String, ImageBitmap>() }
+    LaunchedEffect(index, items) {
+        val wanted = listOfNotNull(
+            items.getOrNull(index), items.getOrNull(index + 1), items.getOrNull(index - 1),
+        )
+        previewBitmaps.keys.retainAll(wanted.map { it.absolutePath }.toSet())
+        for (f in wanted) {
+            if (previewBitmaps.containsKey(f.absolutePath)) continue
+            loadPreviewBitmap(previewContext, f)?.let { previewBitmaps[f.absolutePath] = it }
+        }
+    }
     LaunchedEffect(controlsVisible, interactionTick) {
         if (!controlsVisible) return@LaunchedEffect
         delay(3000)
@@ -316,10 +341,14 @@ fun MediaPane(
         } else {
             // Neighbors, parked just off-screen (±container width) and slid in via the page offset.
             items.getOrNull(index - 1)?.let { prev ->
-                NeighborPreview(prev) { translationX = pageOffset.value - zoom.containerSize.width }
+                NeighborPreview(prev, previewBitmaps[prev.absolutePath]) {
+                    translationX = pageOffset.value - zoom.containerSize.width
+                }
             }
             items.getOrNull(index + 1)?.let { next ->
-                NeighborPreview(next) { translationX = pageOffset.value + zoom.containerSize.width }
+                NeighborPreview(next, previewBitmaps[next.absolutePath]) {
+                    translationX = pageOffset.value + zoom.containerSize.width
+                }
             }
 
             val density = LocalDensity.current
@@ -369,7 +398,9 @@ fun MediaPane(
                 painter?.state is AsyncImagePainter.State.Success && zoom.fittedSize != Size.Zero
             }
             if (!contentReady) {
-                NeighborPreview(file) { translationX = pageOffset.value }
+                NeighborPreview(file, previewBitmaps[file.absolutePath]) {
+                    translationX = pageOffset.value
+                }
             }
             if (controlsVisible) {
                 PaneOverlay(
@@ -382,9 +413,24 @@ fun MediaPane(
     }
 }
 
-/** A fit-to-screen thumbnail of an adjacent item, positioned via [layer] (its page-offset translation). */
+/**
+ * A fit-to-screen thumbnail of an adjacent (or still-loading current) item, positioned via
+ * [layer]. Draws the pre-decoded [bitmap] when available — a synchronous draw with no async
+ * gap — and falls back to an async request only the first time an item is ever seen.
+ */
 @Composable
-private fun NeighborPreview(file: File, layer: GraphicsLayerScope.() -> Unit) {
+private fun NeighborPreview(file: File, bitmap: ImageBitmap?, layer: GraphicsLayerScope.() -> Unit) {
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(layer),
+        )
+        return
+    }
     val context = LocalContext.current
     AsyncImage(
         model = remember(file) {
@@ -407,6 +453,27 @@ private fun NeighborPreview(file: File, layer: GraphicsLayerScope.() -> Unit) {
             .fillMaxSize()
             .graphicsLayer(layer),
     )
+}
+
+/**
+ * Decodes a preview of [file] through the Coil pipeline (EXIF rotation, the video-thumb
+ * disk cache, and the memory cache all apply), returning a software bitmap the previews
+ * can draw synchronously.
+ */
+private suspend fun loadPreviewBitmap(context: Context, file: File): ImageBitmap? {
+    val request = ImageRequest.Builder(context)
+        .data(file)
+        .apply {
+            if (file.isVideoFile()) {
+                videoFramePercent(0.25)
+                videoFrameOption(MediaMetadataRetriever.OPTION_CLOSEST)
+            }
+        }
+        .size(1600)
+        .allowHardware(false)
+        .build()
+    val result = context.imageLoader.execute(request)
+    return ((result as? SuccessResult)?.drawable as? BitmapDrawable)?.bitmap?.asImageBitmap()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
