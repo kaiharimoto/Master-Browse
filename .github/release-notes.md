@@ -1,9 +1,9 @@
-Seamless video swipes, for real this time.
+Kills the last swipe flash.
 
 ## Fixed
-- **No more thumbnail blip when swiping between videos** — the swipe preview and landing poster are now the video's **exact first frame** (previously the 25%-in grid thumbnail), so the image you drag in is pixel-identical to the frame playback starts on: the poster→player hand-off is invisible and motion just begins. Preview preloading also widened to two items each way, keeping fast repeated swipes flash-free. (Grid tiles keep the 25% frame; note videos that fade in from black now show their true dark start while swiping.)
+- **Stretched-frame flash on some videos** — the video surface is provisionally laid out until the decoder reports the file's true dimensions, and on some videos the first frame arrived before that report, briefly revealing it stretched to screen shape. The swipe poster now stays up until **both** the first frame has rendered **and** the true dimensions are in, and the provisional surface uses the poster's own aspect ratio — so a misshapen frame can never reach the screen.
 
 ## Install
 Installs **in place** — `MENU → Update from GitHub` on v1.6+. Coming from v1.5 or earlier: uninstall once, then sideload.
 
-versionName 1.8 / versionCode 9 — min SDK 30, target SDK 35.
+versionName 1.9 / versionCode 10 — min SDK 30, target SDK 35.
