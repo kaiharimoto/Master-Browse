@@ -152,10 +152,18 @@ fun MediaPane(
     }
 
     val isVideo = file?.isVideoFile() == true
-    // Keeps the thumbnail placeholder up until the video has actually drawn a frame.
+    // The poster placeholder stays up until the video has BOTH rendered a frame and
+    // reported its real dimensions — revealing on first-frame alone could expose a frame
+    // stretched into the provisionally-sized (container-aspect) surface when the decoder
+    // delivers the frame before the size callback.
     var videoFrameReady by remember(file) { mutableStateOf(false) }
+    var videoSizeReady by remember(file) { mutableStateOf(false) }
     val player = if (file != null && isVideo) {
-        rememberVideoPlayer(file, zoom, onFirstFrame = { videoFrameReady = true })
+        rememberVideoPlayer(
+            file, zoom,
+            onFirstFrame = { videoFrameReady = true },
+            onVideoSize = { videoSizeReady = true },
+        )
     } else null
 
     val painter = if (file != null && !isVideo) {
@@ -185,10 +193,15 @@ fun MediaPane(
         LaunchedEffect(player, zoom.containerSize) {
             if (zoom.contentPixels == Size.Zero && zoom.containerSize != Size.Zero) {
                 val vs = player.videoSize
-                zoom.contentPixels = if (vs.width > 0 && vs.height > 0) {
-                    Size(vs.width.toFloat(), vs.height.toFloat())
-                } else {
-                    zoom.containerSize
+                val poster = previewBitmaps[file?.absolutePath]
+                zoom.contentPixels = when {
+                    // Real decoder size, if it already arrived.
+                    vs.width > 0 && vs.height > 0 -> Size(vs.width.toFloat(), vs.height.toFloat())
+                    // Otherwise the poster's aspect (frames come pre-rotated), so the surface
+                    // is laid out at the right shape from the very first frame.
+                    poster != null -> Size(poster.width.toFloat(), poster.height.toFloat())
+                    // Last resort: container aspect, corrected when the decoder reports in.
+                    else -> zoom.containerSize
                 }
             }
         }
@@ -397,7 +410,7 @@ fun MediaPane(
             // actually draw, so committing a swipe never flashes black/"Loading…" —
             // the preview simply persists and then dissolves into the live media.
             val contentReady = if (isVideo) {
-                videoFrameReady
+                videoFrameReady && videoSizeReady
             } else {
                 painter?.state is AsyncImagePainter.State.Success && zoom.fittedSize != Size.Zero
             }
@@ -621,6 +634,7 @@ private fun rememberVideoPlayer(
     file: File,
     zoom: ZoomState,
     onFirstFrame: () -> Unit = {},
+    onVideoSize: () -> Unit = {},
 ): ExoPlayer {
     val context = LocalContext.current
     val player = remember(file) {
@@ -632,11 +646,13 @@ private fun rememberVideoPlayer(
         }
     }
     val firstFrameCb = rememberUpdatedState(onFirstFrame)
+    val videoSizeCb = rememberUpdatedState(onVideoSize)
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
                     zoom.contentPixels = Size(videoSize.width.toFloat(), videoSize.height.toFloat())
+                    videoSizeCb.value()
                 }
             }
 
