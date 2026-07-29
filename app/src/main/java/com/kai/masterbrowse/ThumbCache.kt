@@ -76,18 +76,25 @@ object ThumbCache {
     }
 
     /**
-     * Same frame choice as the live decoder: 25% in (a fixed 1s overshoots short
-     * clips), decoded exactly — keyframe-only retrieval snaps fade-ins to the
-     * black first keyframe. Decoded pre-scaled when the video is larger than
-     * [MAX_DIM]; frames come back already rotated per the video's metadata.
+     * Same frame choice as the live decoder for cached thumbs: 25% in (a fixed 1s
+     * overshoots short clips), decoded exactly — keyframe-only retrieval snaps
+     * fade-ins to the black first keyframe.
      */
-    private fun extractFrame(file: File): Bitmap? {
+    private fun extractFrame(file: File): Bitmap? = frameAt(file, positionFraction = 0.25, maxDim = MAX_DIM)
+
+    /**
+     * Decodes one exact frame of [file] at [positionFraction] of its duration,
+     * pre-scaled to [maxDim] and already rotated per the video's metadata.
+     * Blocking — call on an IO thread. The viewer uses fraction 0.0 for swipe
+     * posters so they match exactly where playback starts.
+     */
+    fun frameAt(file: File, positionFraction: Double, maxDim: Int): Bitmap? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(file.absolutePath)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull() ?: 0L
-            val timeUs = durationMs * 1000 / 4
+            val timeUs = (durationMs * 1000 * positionFraction).toLong()
             var w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
                 ?.toIntOrNull() ?: 0
             var h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
@@ -95,8 +102,8 @@ object ThumbCache {
             val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
                 ?.toIntOrNull() ?: 0
             if (rotation == 90 || rotation == 270) { val t = w; w = h; h = t }
-            if (w > 0 && h > 0 && maxOf(w, h) > MAX_DIM) {
-                val scale = MAX_DIM.toFloat() / maxOf(w, h)
+            if (w > 0 && h > 0 && maxOf(w, h) > maxDim) {
+                val scale = maxDim.toFloat() / maxOf(w, h)
                 retriever.getScaledFrameAtTime(
                     timeUs, MediaMetadataRetriever.OPTION_CLOSEST,
                     (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1),

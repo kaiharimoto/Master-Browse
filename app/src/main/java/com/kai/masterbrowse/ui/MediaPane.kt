@@ -82,12 +82,15 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import coil.request.videoFrameOption
 import coil.request.videoFramePercent
+import com.kai.masterbrowse.ThumbCache
 import com.kai.masterbrowse.isVideoFile
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * One fullscreen (or half-screen in split mode) media view: an image or a looping video,
@@ -134,6 +137,7 @@ fun MediaPane(
     LaunchedEffect(index, items) {
         val wanted = listOfNotNull(
             items.getOrNull(index), items.getOrNull(index + 1), items.getOrNull(index - 1),
+            items.getOrNull(index + 2), items.getOrNull(index - 2),
         )
         previewBitmaps.keys.retainAll(wanted.map { it.absolutePath }.toSet())
         for (f in wanted) {
@@ -456,19 +460,20 @@ private fun NeighborPreview(file: File, bitmap: ImageBitmap?, layer: GraphicsLay
 }
 
 /**
- * Decodes a preview of [file] through the Coil pipeline (EXIF rotation, the video-thumb
- * disk cache, and the memory cache all apply), returning a software bitmap the previews
- * can draw synchronously.
+ * Decodes a preview of [file] the previews can draw synchronously. Videos use their
+ * exact FIRST frame, extracted directly — not the 25% grid thumbnail (which the
+ * video-thumb interceptor serves for every Coil request): the poster must match where
+ * playback starts, or the placeholder→player hand-off visibly jumps content. Images
+ * go through Coil (EXIF rotation, memory cache).
  */
 private suspend fun loadPreviewBitmap(context: Context, file: File): ImageBitmap? {
+    if (file.isVideoFile()) {
+        return withContext(Dispatchers.IO) {
+            ThumbCache.frameAt(file, positionFraction = 0.0, maxDim = 1600)?.asImageBitmap()
+        }
+    }
     val request = ImageRequest.Builder(context)
         .data(file)
-        .apply {
-            if (file.isVideoFile()) {
-                videoFramePercent(0.25)
-                videoFrameOption(MediaMetadataRetriever.OPTION_CLOSEST)
-            }
-        }
         .size(1600)
         .allowHardware(false)
         .build()
