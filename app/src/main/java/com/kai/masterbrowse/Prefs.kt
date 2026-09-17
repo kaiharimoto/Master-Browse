@@ -62,6 +62,51 @@ object Prefs {
             sp.edit().putString("pins", value.joinToString("\n")).apply()
         }
 
+    /** Tile size inside the floating window; kept separate so pinching there doesn't
+     *  shrink the fullscreen grid. */
+    var floatTileSizeDp: Float
+        get() = sp.getFloat("floatTileSize", 110f)
+        set(value) {
+            sp.edit().putFloat("floatTileSize", value).apply()
+        }
+
+    /** Last position/size of the floating window, in px. -1 means "not set yet". */
+    var floatX: Int
+        get() = sp.getInt("floatX", -1)
+        set(value) {
+            sp.edit().putInt("floatX", value).apply()
+        }
+
+    var floatY: Int
+        get() = sp.getInt("floatY", -1)
+        set(value) {
+            sp.edit().putInt("floatY", value).apply()
+        }
+
+    var floatW: Int
+        get() = sp.getInt("floatW", -1)
+        set(value) {
+            sp.edit().putInt("floatW", value).apply()
+        }
+
+    var floatH: Int
+        get() = sp.getInt("floatH", -1)
+        set(value) {
+            sp.edit().putInt("floatH", value).apply()
+        }
+
+    /**
+     * How much room the floating window's media area should take up, in px². Kept apart
+     * from floatW/floatH so that auto-fitting to each item's shape never redefines the
+     * size the user actually dragged the window to. -1 means "not set yet".
+     */
+    var floatContentArea: Long
+        get() = sp.getLong("floatContentArea", -1L)
+        set(value) {
+            sp.edit().putLong("floatContentArea", value).apply()
+
+        }
+
     fun folderThumb(folderPath: String): String? = sp.getString("thumb:$folderPath", null)
 
     fun setFolderThumb(folderPath: String, imagePath: String?) {

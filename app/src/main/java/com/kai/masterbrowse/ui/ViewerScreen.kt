@@ -18,11 +18,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,11 +33,16 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.kai.masterbrowse.FileRepo
+import com.kai.masterbrowse.overlay.Handoff
 import java.io.File
 
 /**
  * Fullscreen viewer. Shows one media pane, or two side by side in split mode.
  * In split mode the right half starts as a tile picker to choose the second item.
+ *
+ * Inside the floating window there is no room for split mode, so the right-hand controls
+ * collapse to a single GRID button; [onIndexChange] keeps the host told which item is on
+ * screen so POP OUT / EXPAND can carry it across.
  */
 @Composable
 fun ViewerScreen(
@@ -43,7 +50,11 @@ fun ViewerScreen(
     startIndex: Int,
     browseStart: File,
     onClose: () -> Unit,
+    onIndexChange: (Int) -> Unit = {},
+    onMediaSizeChange: (Size) -> Unit = {},
 ) {
+    val host = LocalAppHost.current
+    var currentIndex by remember(items, startIndex) { mutableIntStateOf(startIndex) }
     var split by remember { mutableStateOf(false) }
     var secondary by remember { mutableStateOf<Pair<List<File>, Int>?>(null) }
     var pickerDir by remember { mutableStateOf(browseStart) }
@@ -76,12 +87,33 @@ fun ViewerScreen(
             items = items,
             startIndex = startIndex,
             modifier = Modifier.weight(1f).fillMaxHeight(),
+            onIndexChange = {
+                currentIndex = it
+                onIndexChange(it)
+            },
+            // Only the primary pane drives the window shape; split mode is unreachable
+            // in the floating window anyway.
+            onMediaSizeChange = onMediaSizeChange,
         ) {
-            PaneButton(if (split) "SINGLE" else "SPLIT") {
-                split = !split
-                if (!split) secondary = null
+            if (host.floating) {
+                PaneButton("GRID") { onClose() }
+            } else {
+                PaneButton(if (split) "SINGLE" else "SPLIT") {
+                    split = !split
+                    if (!split) secondary = null
+                }
+                host.onPopOut?.let { popOut ->
+                    PaneButton("POP OUT") {
+                        val session = Handoff(browseStart, items, currentIndex)
+                        // Close here first: the mini window takes over playback, and a
+                        // second player left behind in the backgrounded activity would
+                        // come back to life the next time the app is resumed.
+                        onClose()
+                        popOut(session)
+                    }
+                }
+                PaneButton("CLOSE") { onClose() }
             }
-            PaneButton("CLOSE") { onClose() }
         }
         if (split) {
             Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF333333)))

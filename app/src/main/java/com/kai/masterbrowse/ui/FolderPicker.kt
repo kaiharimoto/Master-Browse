@@ -37,6 +37,7 @@ fun FolderPicker(
     onCancel: () -> Unit,
     onSelect: (File) -> Unit,
 ) {
+    val floating = LocalAppHost.current.floating
     var pickDir by remember { mutableStateOf(start) }
     // Back walks up the folder tree (destinations can be anywhere, including ancestors);
     // CANCEL aborts, and back at the filesystem root also aborts.
@@ -48,7 +49,7 @@ fun FolderPicker(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .then(if (floating) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
     ) {
         Row(
             Modifier.fillMaxWidth().background(Color(0xFF3A3320)).padding(6.dp),

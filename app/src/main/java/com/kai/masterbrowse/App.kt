@@ -1,12 +1,15 @@
 package com.kai.masterbrowse
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.ImageDecoderDecoder
 import coil.decode.VideoFrameDecoder
 import coil.intercept.Interceptor
 import coil.request.ImageResult
+import com.kai.masterbrowse.overlay.OverlayService
 import java.io.File
 import kotlin.concurrent.thread
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +22,15 @@ class App : Application(), ImageLoaderFactory {
         Prefs.init(this)
         ThumbCache.init(this)
         thread(name = "thumb-prune") { ThumbCache.prune() }
+        // The floating window's foreground service needs somewhere to post its ongoing
+        // notification. Low importance: no sound, no heads-up, no badge.
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(
+                OverlayService.CHANNEL_ID,
+                "Floating window",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply { setShowBadge(false) }
+        )
     }
 
     override fun newImageLoader(): ImageLoader =

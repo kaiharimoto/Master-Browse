@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,17 +58,14 @@ fun BrowserScreen(
     val scope = rememberCoroutineScope()
     var pickThumbFor by remember { mutableStateOf<File?>(null) }
     var thumbVersion by remember { mutableIntStateOf(0) }
-    var menuOpen by remember { mutableStateOf(false) }
     var deleteTargets by remember { mutableStateOf<List<File>?>(null) }
     var showUpdate by remember { mutableStateOf(false) }
     var sortMode by remember { mutableStateOf(Prefs.sortMode) }
     var sortDesc by remember { mutableStateOf(Prefs.sortDesc) }
     var aspectMode by remember { mutableStateOf(Prefs.aspectMode) }
-    var sortOpen by remember { mutableStateOf(false) }
     var filterOpen by remember(dir) { mutableStateOf(false) }
     var filter by remember(dir) { mutableStateOf("") }
     var pinned by remember { mutableStateOf(Prefs.pinnedFolders) }
-    var pinsOpen by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<File?>(null) }
     var showNames by remember { mutableStateOf(Prefs.showNames) }
@@ -79,6 +74,22 @@ fun BrowserScreen(
     // Multi-select mode: while active, tapping tiles toggles membership instead of opening.
     var selecting by remember(dir) { mutableStateOf(false) }
     val selected = remember(dir) { mutableStateListOf<String>() }
+
+    val floating = LocalAppHost.current.floating
+    val menuController = LocalMenuController.current
+
+    fun runDelete(targets: List<File>) {
+        deleteTargets = null
+        selecting = false
+        selected.clear()
+        scope.launch {
+            val failed = withContext(Dispatchers.IO) { targets.count { !FileRepo.moveToTrash(it) } }
+            if (failed > 0) {
+                Toast.makeText(context, "$failed of ${targets.size} failed", Toast.LENGTH_SHORT).show()
+            }
+            thumbVersion++
+        }
+    }
 
     fun toggleSelect(f: File) {
         val p = f.absolutePath
@@ -122,6 +133,27 @@ fun BrowserScreen(
         return
     }
 
+    /**
+     * Anything that opens its own window (a Dialog, or a text field that needs the IME)
+     * cannot work inside the floating overlay window, so those entries are left out
+     * there. Menus route through [LocalMenuController] instead, which draws them inline.
+     */
+    fun confirmDeleteOf(targets: List<File>) {
+        if (menuController == null) {
+            deleteTargets = targets
+            return
+        }
+        val what = if (targets.size == 1) "\"${targets.first().name}\"" else "${targets.size} items"
+        menuController.show(
+            title = "Move $what to trash? Trashed items are kept in .MasterBrowseTrash " +
+                "for 30 days, then deleted permanently.",
+            entries = listOf(
+                MenuEntry("DELETE", highlighted = true) { runDelete(targets) },
+                MenuEntry("CANCEL") { },
+            ),
+        )
+    }
+
     fun selectSort(mode: SortMode) {
         if (sortMode == mode) {
             sortDesc = !sortDesc
@@ -131,7 +163,6 @@ fun BrowserScreen(
         }
         Prefs.sortMode = sortMode
         Prefs.sortDesc = sortDesc
-        sortOpen = false
     }
 
     BackHandler(enabled = selecting || pickThumbFor != null || dir.absolutePath != home.absolutePath) {
@@ -149,7 +180,9 @@ fun BrowserScreen(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            // Insets dispatched to a freely-positioned overlay window are meaningless and
+            // would eat a big slice of a small floating window.
+            .then(if (floating) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
     ) {
         Row(
             Modifier
@@ -161,37 +194,26 @@ fun BrowserScreen(
         ) {
             PaneButton("UP") { FileRepo.parentOf(dir)?.let(onDirChange) }
             PaneButton("HOME") { onDirChange(home) }
-            Box {
-                PaneButton("★") { pinsOpen = true }
-                DropdownMenu(expanded = pinsOpen, onDismissRequest = { pinsOpen = false }) {
-                    if (pinned.isEmpty()) {
-                        DropdownMenuItem(
-                            text = { Text("No pinned folders", color = Color(0xFF6B6F76)) },
-                            onClick = { pinsOpen = false },
-                        )
-                    }
-                    pinned.forEach { path ->
+            MenuButton("★") {
+                if (pinned.isEmpty()) {
+                    listOf(MenuEntry("No pinned folders") { })
+                } else {
+                    pinned.map { path ->
                         val f = File(path)
                         val alive = f.isDirectory
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    if (alive) f.name else "${f.name} (missing)",
-                                    color = if (alive) Color.White else Color(0xFF6B6F76),
-                                )
-                            },
-                            onClick = {
-                                pinsOpen = false
-                                if (alive) {
-                                    onDirChange(f)
-                                } else {
-                                    // Tapping a dead entry unpins it explicitly, so an
-                                    // unmounted SD card doesn't silently lose pins.
-                                    setPins(pinned - path)
-                                    Toast.makeText(context, "Unpinned missing folder", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                        )
+                        MenuEntry(
+                            if (alive) f.name else "${f.name} (missing)",
+                            highlighted = alive,
+                        ) {
+                            if (alive) {
+                                onDirChange(f)
+                            } else {
+                                // Tapping a dead entry unpins it explicitly, so an
+                                // unmounted SD card doesn't silently lose pins.
+                                setPins(pinned - path)
+                                Toast.makeText(context, "Unpinned missing folder", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 }
             }
@@ -203,15 +225,14 @@ fun BrowserScreen(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Box {
-                PaneButton("SORT") { sortOpen = true }
-                DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
-                    SortMenuItem("Name", sortMode == SortMode.NAME, sortDesc) { selectSort(SortMode.NAME) }
-                    SortMenuItem("Date modified", sortMode == SortMode.DATE, sortDesc) { selectSort(SortMode.DATE) }
-                    SortMenuItem("File size", sortMode == SortMode.SIZE, sortDesc) { selectSort(SortMode.SIZE) }
-                }
+            MenuButton("SORT") {
+                listOf(
+                    sortEntry("Name", SortMode.NAME, sortMode, sortDesc) { m -> selectSort(m) },
+                    sortEntry("Date modified", SortMode.DATE, sortMode, sortDesc) { m -> selectSort(m) },
+                    sortEntry("File size", SortMode.SIZE, sortMode, sortDesc) { m -> selectSort(m) },
+                )
             }
-            PaneButton("FILTER") {
+            if (!floating) PaneButton("FILTER") {
                 if (filterOpen) {
                     filter = ""
                     filterOpen = false
@@ -236,53 +257,32 @@ fun BrowserScreen(
                     onDirChange(FileRepo.internalRoot())
                 }
             }
-            Box {
-                PaneButton("MENU") { menuOpen = true }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Set this folder as home") },
-                        onClick = {
-                            menuOpen = false
-                            onSetHome(dir)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Clear this folder's thumbnail") },
-                        onClick = {
-                            menuOpen = false
+            MenuButton("MENU") {
+                buildList {
+                    add(MenuEntry("Set this folder as home") { onSetHome(dir) })
+                    add(
+                        MenuEntry("Clear this folder's thumbnail") {
                             Prefs.setFolderThumb(dir.absolutePath, null)
                             thumbVersion++
-                        },
+                        }
                     )
-                    DropdownMenuItem(
-                        text = { Text(if (dir.absolutePath in pinned) "Unpin this folder" else "Pin this folder") },
-                        onClick = {
-                            menuOpen = false
-                            togglePin(dir.absolutePath)
-                        },
+                    add(
+                        MenuEntry(
+                            if (dir.absolutePath in pinned) "Unpin this folder" else "Pin this folder"
+                        ) { togglePin(dir.absolutePath) }
                     )
-                    DropdownMenuItem(
-                        text = { Text(if (showNames) "Hide filenames" else "Show filenames") },
-                        onClick = {
-                            menuOpen = false
+                    add(
+                        MenuEntry(if (showNames) "Hide filenames" else "Show filenames") {
                             showNames = !showNames
                             Prefs.showNames = showNames
-                        },
+                        }
                     )
-                    DropdownMenuItem(
-                        text = { Text("Help") },
-                        onClick = {
-                            menuOpen = false
-                            showHelp = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Update from GitHub") },
-                        onClick = {
-                            menuOpen = false
-                            showUpdate = true
-                        },
-                    )
+                    // Help is a Dialog and the updater both opens one and installs an
+                    // APK — neither belongs in (or works from) the floating window.
+                    if (!floating) {
+                        add(MenuEntry("Help") { showHelp = true })
+                        add(MenuEntry("Update from GitHub") { showUpdate = true })
+                    }
                 }
             }
         }
@@ -353,7 +353,7 @@ fun BrowserScreen(
                 )
                 PaneButton("MOVE") { if (selected.isNotEmpty()) transfer = selected.map(::File) to false }
                 PaneButton("COPY") { if (selected.isNotEmpty()) transfer = selected.map(::File) to true }
-                PaneButton("DELETE") { if (selected.isNotEmpty()) deleteTargets = selected.map(::File) }
+                PaneButton("DELETE") { if (selected.isNotEmpty()) confirmDeleteOf(selected.map(::File)) }
                 PaneButton("CANCEL") {
                     selecting = false
                     selected.clear()
@@ -401,10 +401,10 @@ fun BrowserScreen(
                         selecting = true
                         toggleSelect(d)
                     },
-                    "Rename" to { renameTarget = d },
+                    *(if (floating) emptyArray() else arrayOf("Rename" to { renameTarget = d })),
                     "Move…" to { transfer = listOf(d) to false },
                     "Copy…" to { transfer = listOf(d) to true },
-                    "Delete" to { deleteTargets = listOf(d) },
+                    "Delete" to { confirmDeleteOf(listOf(d)) },
                 )
             },
             fileMenu = { f ->
@@ -417,10 +417,10 @@ fun BrowserScreen(
                         selecting = true
                         toggleSelect(f)
                     },
-                    "Rename" to { renameTarget = f },
+                    *(if (floating) emptyArray() else arrayOf("Rename" to { renameTarget = f })),
                     "Move…" to { transfer = listOf(f) to false },
                     "Copy…" to { transfer = listOf(f) to true },
-                    "Delete" to { deleteTargets = listOf(f) },
+                    "Delete" to { confirmDeleteOf(listOf(f)) },
                 )
             },
         )
@@ -438,18 +438,7 @@ fun BrowserScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    deleteTargets = null
-                    selecting = false
-                    selected.clear()
-                    scope.launch {
-                        val failed = withContext(Dispatchers.IO) { targets.count { !FileRepo.moveToTrash(it) } }
-                        if (failed > 0) {
-                            Toast.makeText(context, "$failed of ${targets.size} failed", Toast.LENGTH_SHORT).show()
-                        }
-                        thumbVersion++
-                    }
-                }) { Text("DELETE") }
+                TextButton(onClick = { runDelete(targets) }) { Text("DELETE") }
             },
             dismissButton = {
                 TextButton(onClick = { deleteTargets = null }) { Text("CANCEL") }
@@ -511,12 +500,15 @@ fun BrowserScreen(
     }
 }
 
-/** One row of the SORT dropdown; shows ▲/▼ on the active sort key. */
-@Composable
-private fun SortMenuItem(label: String, active: Boolean, desc: Boolean, onClick: () -> Unit) {
-    val prefix = if (active) (if (desc) "▼ " else "▲ ") else "     "
-    DropdownMenuItem(
-        text = { Text(prefix + label, color = if (active) Color.White else Color(0xFFB8BCC2)) },
-        onClick = onClick,
-    )
+/** One row of the SORT menu; shows ▲/▼ on the active sort key. */
+private fun sortEntry(
+    label: String,
+    mode: SortMode,
+    active: SortMode,
+    desc: Boolean,
+    onSelect: (SortMode) -> Unit,
+): MenuEntry {
+    val isActive = active == mode
+    val prefix = if (isActive) (if (desc) "▼ " else "▲ ") else "     "
+    return MenuEntry(prefix + label, highlighted = isActive) { onSelect(mode) }
 }

@@ -84,7 +84,12 @@ fun BrowserGrid(
     dirMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
     fileMenu: ((File) -> List<Pair<String, () -> Unit>>)? = null,
 ) {
-    var tileDp by remember { mutableFloatStateOf(Prefs.tileSizeDp) }
+    // The floating window has its own tile size: pinching tiles down in a 400dp window
+    // must not shrink the fullscreen tablet grid.
+    val floating = LocalAppHost.current.floating
+    var tileDp by remember(floating) {
+        mutableFloatStateOf(if (floating) Prefs.floatTileSizeDp else Prefs.tileSizeDp)
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -105,7 +110,9 @@ fun BrowserGrid(
                             event.changes.forEach { it.consume() }
                         }
                     }
-                    if (pinching) Prefs.tileSizeDp = tileDp
+                    if (pinching) {
+                        if (floating) Prefs.floatTileSizeDp = tileDp else Prefs.tileSizeDp = tileDp
+                    }
                 }
             }
     ) {
@@ -279,12 +286,23 @@ fun TileContent(
     selected: Boolean = false,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    // In the floating window a Compose DropdownMenu would try to add its own window with
+    // a token that isn't valid there, so route long-press through the inline menu host.
+    val menuController = LocalMenuController.current
     Box(
         modifier
             .background(Color(0xFF17181B))
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = if (menu.isNullOrEmpty()) null else ({ menuOpen = true }),
+                onLongClick = if (menu.isNullOrEmpty()) null else ({
+                    if (menuController == null) {
+                        menuOpen = true
+                    } else {
+                        menuController.show(
+                            entries = menu.map { (label, action) -> MenuEntry(label, onClick = action) },
+                        )
+                    }
+                }),
             )
     ) {
         val context = LocalContext.current
@@ -357,7 +375,7 @@ fun TileContent(
                 fontSize = 13.sp,
             )
         }
-        if (!menu.isNullOrEmpty()) {
+        if (!menu.isNullOrEmpty() && menuController == null) {
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 menu.forEach { (label, action) ->
                     DropdownMenuItem(

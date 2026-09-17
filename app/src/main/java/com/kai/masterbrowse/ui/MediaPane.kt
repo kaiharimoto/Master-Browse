@@ -72,6 +72,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import coil.compose.AsyncImage
@@ -99,12 +100,22 @@ import kotlinx.coroutines.withContext
  *
  * Navigation: horizontal drag (follows finger, snaps), double-tap left/right (instant),
  * ←/→ keys (instant). For videos, hold J to rewind and K to fast-forward (accelerating).
+ *
+ * [onIndexChange] reports which item is on screen, so the host can pop that item out
+ * into the floating window (or restore it from there). Never feed it back in as
+ * [startIndex] — that is remembered per value and would reset zoom on every page turn.
+ * [onMediaSizeChange] reports the item's intrinsic pixel size, which the floating window
+ * uses to reshape itself to the media.
  */
+// setSeekParameters (used by the J/K jog and the seek bar) is media3-unstable API.
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun MediaPane(
     items: List<File>,
     startIndex: Int,
     modifier: Modifier = Modifier,
+    onIndexChange: (Int) -> Unit = {},
+    onMediaSizeChange: (Size) -> Unit = {},
     extraButtons: @Composable RowScope.() -> Unit = {},
 ) {
     var index by remember(items, startIndex) {
@@ -121,6 +132,11 @@ fun MediaPane(
     val pageOffset = remember { Animatable(0f) }
     val focusRequester = remember { FocusRequester() }
 
+    LaunchedEffect(index) { onIndexChange(index) }
+    LaunchedEffect(zoom.contentPixels) {
+        val px = zoom.contentPixels
+        if (px.width > 0f && px.height > 0f) onMediaSizeChange(px)
+    }
     LaunchedEffect(file) {
         zoom.reset()
         zoom.contentPixels = Size.Zero
@@ -495,6 +511,7 @@ private suspend fun loadPreviewBitmap(context: Context, file: File): ImageBitmap
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun BoxScope.PaneOverlay(
     file: File,
@@ -691,11 +708,17 @@ private fun rememberVideoPlayer(
 
 @Composable
 fun PaneButton(label: String, onClick: () -> Unit) {
+    // The floating window is small and its toolbar carries up to seven buttons, so trim
+    // the padding there on top of the overall density scale the overlay applies.
+    val compact = LocalAppHost.current.floating
     Box(
         Modifier
             .background(Color(0xFF222428))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(
+                horizontal = if (compact) 8.dp else 12.dp,
+                vertical = if (compact) 5.dp else 8.dp,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = Color.White, fontSize = 13.sp)
