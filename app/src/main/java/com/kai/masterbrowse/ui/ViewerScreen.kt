@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,9 +41,10 @@ import java.io.File
  * Fullscreen viewer. Shows one media pane, or two side by side in split mode.
  * In split mode the right half starts as a tile picker to choose the second item.
  *
- * Inside the floating window there is no room for split mode, so the right-hand controls
- * collapse to a single GRID button; [onIndexChange] keeps the host told which item is on
- * screen so POP OUT / EXPAND can carry it across.
+ * Split works in the floating window too; the window widens to hold both panes.
+ * [onIndexChange] keeps the host told which item is on screen so POP OUT / EXPAND can
+ * carry it across, and [onMediaSizeChange] reports the shape the host should give the
+ * window — the primary item's, widened by the number of panes on screen.
  */
 @Composable
 fun ViewerScreen(
@@ -58,6 +60,16 @@ fun ViewerScreen(
     var split by remember { mutableStateOf(false) }
     var secondary by remember { mutableStateOf<Pair<List<File>, Int>?>(null) }
     var pickerDir by remember { mutableStateOf(browseStart) }
+    var primarySize by remember { mutableStateOf(Size.Zero) }
+
+    // Two panes side by side want twice the width for the same item, so the reported
+    // shape follows the split toggle as well as the media itself.
+    LaunchedEffect(primarySize, split) {
+        if (primarySize.width > 0f && primarySize.height > 0f) {
+            val panes = if (split) 2 else 1
+            onMediaSizeChange(Size(primarySize.width * panes, primarySize.height))
+        }
+    }
 
     BackHandler {
         if (split) {
@@ -91,17 +103,16 @@ fun ViewerScreen(
                 currentIndex = it
                 onIndexChange(it)
             },
-            // Only the primary pane drives the window shape; split mode is unreachable
-            // in the floating window anyway.
-            onMediaSizeChange = onMediaSizeChange,
+            // Only the primary pane drives the window shape.
+            onMediaSizeChange = { primarySize = it },
         ) {
+            PaneButton(if (split) "SINGLE" else "SPLIT") {
+                split = !split
+                if (!split) secondary = null
+            }
             if (host.floating) {
                 PaneButton("GRID") { onClose() }
             } else {
-                PaneButton(if (split) "SINGLE" else "SPLIT") {
-                    split = !split
-                    if (!split) secondary = null
-                }
                 host.onPopOut?.let { popOut ->
                     PaneButton("POP OUT") {
                         val session = Handoff(browseStart, items, currentIndex)
