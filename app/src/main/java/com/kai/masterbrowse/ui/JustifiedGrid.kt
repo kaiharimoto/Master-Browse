@@ -119,9 +119,10 @@ fun JustifiedGrid(
         }
     }
 
-    val gap = 2f
+    val gap = TILE_GAP_DP
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val containerW = maxWidth.value
+        // The list pads [gap] on both sides, so rows must fill the width inside that.
+        val containerW = maxWidth.value - 2 * gap
         val aspectList = entries.map {
             if (it.isDir) 1f else (aspects[it.file.absolutePath] ?: 1f)
         }

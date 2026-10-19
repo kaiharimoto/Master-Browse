@@ -19,7 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,33 +48,31 @@ fun FolderPicker(
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Ui.Bg)
             .then(if (floating) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
     ) {
-        Row(
-            Modifier.fillMaxWidth().background(Color(0xFF3A3320)).padding(6.dp),
-        ) {
-            Text(title, color = Color(0xFFE8D9A0), fontSize = 13.sp)
-        }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF101114))
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            PaneButton("UP") { FileRepo.parentOf(pickDir)?.let { pickDir = it } }
-            Text(
-                pickDir.absolutePath,
-                Modifier.weight(1f).padding(horizontal = 4.dp),
-                color = Color(0xFFB8BCC2),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            PaneButton("SELECT") { onSelect(pickDir) }
-            PaneButton("CANCEL") { onCancel() }
+        ToolBar {
+            IconPill(MbIcons.Close, "Cancel") { onCancel() }
+            Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                Text(
+                    title,
+                    color = Ui.Accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    pickDir.absolutePath,
+                    color = Ui.Text,
+                    fontSize = if (floating) 13.sp else 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconPill(MbIcons.Up, "Up one folder") { FileRepo.parentOf(pickDir)?.let { pickDir = it } }
+            PaneButton("Use this folder", active = true, icon = MbIcons.Check) { onSelect(pickDir) }
         }
         BrowserGrid(
             dir = pickDir,

@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -270,7 +274,7 @@ fun ViewerScreen(
                     category != null
                 },
             ) {
-                PaneButton("DATASET", active = datasetOn) {
+                PaneButton("Dataset", active = datasetOn, icon = MbIcons.Dataset) {
                     when {
                         datasetOn -> datasetOn = false
                         root?.isDirectory != true -> openRootPicker()
@@ -279,20 +283,20 @@ fun ViewerScreen(
                     Prefs.datasetMode = datasetOn
                 }
                 if (datasetOn && currentIsVideo) {
-                    PaneButton("FRAMES") {
+                    PaneButton("Frames", icon = MbIcons.Frames) {
                         paneStart = currentIndex
                         framesFor = current
                     }
                 }
-                PaneButton(if (split) "SINGLE" else "SPLIT") {
+                PaneButton(if (split) "Single" else "Split", icon = if (split) MbIcons.Single else MbIcons.Split) {
                     split = !split
                     if (!split) secondary = null
                 }
                 if (host.floating) {
-                    PaneButton("GRID") { onClose() }
+                    IconPill(MbIcons.GridSquare, "Back to grid") { onClose() }
                 } else {
                     host.onPopOut?.let { popOut ->
-                        PaneButton("POP OUT") {
+                        PaneButton("Pop out", icon = MbIcons.PopOut) {
                             val session = Handoff(browseStart, items, currentIndex)
                             // Close here first: the mini window takes over playback, and a
                             // second player left behind in the backgrounded activity would
@@ -301,11 +305,11 @@ fun ViewerScreen(
                             popOut(session)
                         }
                     }
-                    PaneButton("CLOSE") { onClose() }
+                    IconPill(MbIcons.Close, "Close") { onClose() }
                 }
             }
             if (split) {
-                Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF333333)))
+                Box(Modifier.width(1.dp).fillMaxHeight().background(Ui.Hairline))
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     val sec = secondary
                     if (sec == null) {
@@ -320,7 +324,7 @@ fun ViewerScreen(
                             startIndex = sec.second,
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            PaneButton("PICK") { secondary = null }
+                            PaneButton("Pick", icon = MbIcons.GridSquare) { secondary = null }
                         }
                     }
                 }
@@ -376,34 +380,46 @@ private fun DatasetBar(
     onChangeRoot: () -> Unit,
 ) {
     val floating = LocalAppHost.current.floating
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF101114))
-            .horizontalScroll(rememberScrollState())
-            .padding(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            root?.name ?: "NO DATASET FOLDER",
-            Modifier.padding(horizontal = 4.dp),
-            color = Color(0xFF9BA3AE),
-            fontSize = 12.sp,
-            maxLines = 1,
-        )
-        if (root != null && categories.isEmpty()) {
-            Text("no categories yet", color = Color(0xFF6B6F76), fontSize = 12.sp)
+    Box(Modifier.fillMaxWidth().background(Ui.Bar)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Ui.Hairline))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = if (floating) 4.dp else 10.dp, vertical = if (floating) 4.dp else 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (floating) 4.dp else 6.dp),
+        ) {
+            Row(
+                Modifier.padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(MbIcons.Dataset, null, Modifier.size(16.dp), tint = Ui.Accent)
+                Text(
+                    root?.name ?: "No dataset folder",
+                    color = Ui.TextDim,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+            }
+            if (root != null && categories.isEmpty()) {
+                Text("No categories yet", color = Ui.TextFaint, fontSize = 13.sp)
+            }
+            categories.forEachIndexed { i, c ->
+                CategoryChip(
+                    keyNumber = if (i < 9) i + 1 else null,
+                    name = c.name,
+                    count = frameCount(c),
+                    active = isMember(c),
+                ) { onToggle(c) }
+            }
+            // Naming a category needs the keyboard, which the floating window leaves to the
+            // app underneath — make categories from the fullscreen app (or a file manager).
+            if (!floating && root != null) PaneButton("New", icon = MbIcons.Add, onClick = onNew)
+            PaneButton("Folder", icon = MbIcons.Folder, onClick = onChangeRoot)
         }
-        categories.forEachIndexed { i, c ->
-            val n = frameCount(c)
-            val label = (if (i < 9) "${i + 1} ${c.name}" else c.name) + if (n > 0) " · $n" else ""
-            PaneButton(label, active = isMember(c)) { onToggle(c) }
-        }
-        // Naming a category needs the keyboard, which the floating window leaves to the
-        // app underneath — make categories from the fullscreen app (or a file manager).
-        if (!floating && root != null) PaneButton("+ NEW", onClick = onNew)
-        PaneButton("ROOT", onClick = onChangeRoot)
     }
 }
 
@@ -424,7 +440,7 @@ private fun NewCategoryDialog(root: File, onDismiss: () -> Unit, onCreated: (Fil
                     },
                     singleLine = true,
                 )
-                error?.let { Text(it, color = Color(0xFFE57373), fontSize = 12.sp) }
+                error?.let { Text(it, color = Ui.Danger, fontSize = 12.sp) }
             }
         },
         confirmButton = {
@@ -435,9 +451,9 @@ private fun NewCategoryDialog(root: File, onDismiss: () -> Unit, onCreated: (Fil
                     File(root, n).exists() -> error = "Already exists"
                     else -> Dataset.create(root, n)?.let(onCreated) ?: run { error = "Couldn't create folder" }
                 }
-            }) { Text("CREATE") }
+            }) { Text("Create") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
@@ -448,21 +464,19 @@ private fun PickerPane(
     onDirChange: (File) -> Unit,
     onPick: (List<File>, Int) -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
-        Row(
-            Modifier.fillMaxWidth().background(Color(0xFF101114)).padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            PaneButton("UP") { FileRepo.parentOf(dir)?.let(onDirChange) }
+    Column(Modifier.fillMaxSize().background(Ui.Bg)) {
+        ToolBar {
+            IconPill(MbIcons.Up, "Up one folder") { FileRepo.parentOf(dir)?.let(onDirChange) }
             Text(
-                dir.absolutePath,
-                Modifier.weight(1f).padding(horizontal = 4.dp),
-                color = Color(0xFFB8BCC2),
-                fontSize = 12.sp,
+                dir.name.ifEmpty { dir.absolutePath },
+                Modifier.weight(1f).padding(horizontal = 6.dp),
+                color = Ui.Text,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Text("Pick the second item", color = Ui.TextFaint, fontSize = 12.sp, maxLines = 1)
         }
         BrowserGrid(
             dir = dir,

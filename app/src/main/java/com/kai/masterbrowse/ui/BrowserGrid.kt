@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -37,11 +39,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -123,7 +128,7 @@ fun BrowserGrid(
         }
         val e = entries
         if (e == null) {
-            Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
+            Text("Loading…", Modifier.align(Alignment.Center), color = Ui.TextFaint, fontSize = 14.sp)
             return@Box
         }
         val (dirs, media) = remember(e, filter, dirsOnly) {
@@ -141,10 +146,10 @@ fun BrowserGrid(
         LaunchedEffect(media) { ThumbCache.prefetch(media) }
         if (dirs.isEmpty() && media.isEmpty()) {
             Text(
-                if (filter.isBlank()) "Empty" else "No matches",
+                if (filter.isBlank()) "Nothing here" else "No matches",
                 Modifier.align(Alignment.Center),
-                color = Color.DarkGray,
-                fontSize = 13.sp,
+                color = Ui.TextFaint,
+                fontSize = 14.sp,
             )
             return@Box
         }
@@ -214,9 +219,9 @@ fun BrowserGrid(
                 columns = GridCells.Adaptive(tileDp.dp),
                 state = gridState,
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                contentPadding = PaddingValues(2.dp),
+                verticalArrangement = Arrangement.spacedBy(TILE_GAP_DP.dp),
+                horizontalArrangement = Arrangement.spacedBy(TILE_GAP_DP.dp),
+                contentPadding = PaddingValues(TILE_GAP_DP.dp),
             ) {
                 items(dirs, key = { "d:" + it.absolutePath }) { d ->
                     TileContent(
@@ -268,6 +273,9 @@ fun BrowserGrid(
     }
 }
 
+/** Space between tiles, shared by the square and justified layouts. */
+const val TILE_GAP_DP = 6f
+
 /**
  * The visual content of a single tile: thumbnail, video badge, name label, and
  * long-press menu. The caller sizes it via [modifier] (a 1:1 square in the grid,
@@ -291,7 +299,8 @@ fun TileContent(
     val menuController = LocalMenuController.current
     Box(
         modifier
-            .background(Color(0xFF17181B))
+            .clip(Ui.Tile)
+            .background(Ui.Raised)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = if (menu.isNullOrEmpty()) null else ({
@@ -332,48 +341,63 @@ fun TileContent(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        }
-        if (!isDir && file.isVideoFile()) {
-            Text(
-                "▶",
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .background(Color(0x99000000))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                color = Color.White,
-                fontSize = 12.sp,
+        } else if (isDir) {
+            Icon(
+                MbIcons.Folder,
+                contentDescription = null,
+                Modifier.align(Alignment.Center).size(40.dp),
+                tint = Ui.RaisedHi,
             )
         }
-        if (showNames) {
+        if (!isDir && file.isVideoFile()) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(24.dp)
+                    .clip(Ui.Pill)
+                    .background(Color(0x99000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(MbIcons.Play, contentDescription = "Video", Modifier.size(14.dp), tint = Color.White)
+            }
+        }
+        // Folders always show their name — a folder tile is unrecognisable by its
+        // thumbnail alone — and get a folder glyph so they read apart from photos.
+        if (showNames || isDir) {
             Row(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color(0xB3000000))
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9000000))))
+                    .padding(start = 8.dp, end = 8.dp, top = 20.dp, bottom = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                if (isDir) Text("▸ ", color = Color(0xFF9BA3AE), fontSize = 12.sp)
+                if (isDir) Icon(MbIcons.Folder, null, Modifier.size(14.dp), tint = Ui.Accent)
                 Text(
                     file.name,
                     color = Color.White,
                     fontSize = 12.sp,
+                    fontWeight = if (isDir) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         if (selected) {
-            Box(Modifier.fillMaxSize().border(3.dp, Color(0xFF4C8DFF)))
-            Text(
-                "✓",
+            Box(Modifier.fillMaxSize().border(3.dp, Ui.Accent, Ui.Tile).background(Color(0x268EA6FF)))
+            Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .background(Color(0xFF4C8DFF))
-                    .padding(horizontal = 7.dp, vertical = 2.dp),
-                color = Color.White,
-                fontSize = 13.sp,
-            )
+                    .padding(6.dp)
+                    .size(24.dp)
+                    .clip(Ui.Pill)
+                    .background(Ui.Accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(MbIcons.Check, contentDescription = "Selected", Modifier.size(16.dp), tint = Ui.OnAccent)
+            }
         }
         if (!menu.isNullOrEmpty() && menuController == null) {
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {

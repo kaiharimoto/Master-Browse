@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,7 +57,7 @@ fun FloatingShell(
                 Modifier
                     .fillMaxWidth()
                     .height(FLOATING_TITLE_BAR_DP.dp)
-                    .background(Color(0xFF101114)),
+                    .background(Ui.Bar),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -71,14 +73,14 @@ fun FloatingShell(
                     Text(
                         title,
                         Modifier.align(Alignment.CenterStart).padding(horizontal = 8.dp),
-                        color = Color(0xFFB8BCC2),
+                        color = Ui.TextDim,
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                PaneButton("EXPAND", onClick = onExpand)
-                PaneButton("✕", onClick = onClose)
+                IconPill(MbIcons.Expand, "Expand to full screen", onClick = onExpand)
+                IconPill(MbIcons.Close, "Close", onClick = onClose)
             }
             Box(Modifier.weight(1f).fillMaxWidth()) { content() }
         }
@@ -87,7 +89,8 @@ fun FloatingShell(
             Modifier
                 .align(Alignment.BottomEnd)
                 .size(30.dp)
-                .background(Color(0xCC222428)),
+                .clip(RoundedCornerShape(topStart = 12.dp))
+                .background(Color(0xCC1D2025)),
             contentAlignment = Alignment.Center,
         ) {
             RawTouchHandle(
@@ -96,7 +99,7 @@ fun FloatingShell(
                 onDelta = onResizeBy,
                 onEnd = onResizeEnd,
             )
-            Text("◢", color = Color(0xFFB8BCC2), fontSize = 13.sp)
+            Text("◢", color = Ui.TextDim, fontSize = 13.sp)
         }
     }
 }

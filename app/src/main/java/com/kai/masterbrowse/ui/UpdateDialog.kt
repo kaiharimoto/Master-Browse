@@ -67,9 +67,9 @@ fun UpdateDialog(onDismiss: () -> Unit) {
         confirmButton = {
             val s = state
             if (s is UpdateState.Found && s.release.apkUrl != null) {
-                TextButton(onClick = { downloadUrl = s.release.apkUrl }) { Text("DOWNLOAD & INSTALL") }
+                TextButton(onClick = { downloadUrl = s.release.apkUrl }) { Text("Download & install") }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CLOSE") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }

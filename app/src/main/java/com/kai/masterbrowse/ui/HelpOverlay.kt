@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -30,7 +31,7 @@ import androidx.compose.ui.window.DialogProperties
 
 /**
  * Full-screen cheat sheet of every gesture and key the app understands.
- * Dismiss via CLOSE, back, or tapping anywhere.
+ * Dismiss via ✕, back, or tapping anywhere.
  */
 @Composable
 fun HelpOverlay(onDismiss: () -> Unit) {
@@ -47,7 +48,7 @@ private fun HelpContent(onDismiss: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color(0xF510121A))
+            .background(Color(0xF50A0B0D))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -55,61 +56,61 @@ private fun HelpContent(onDismiss: () -> Unit) {
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(horizontal = 32.dp, vertical = 24.dp),
     ) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("GESTURES & KEYS", Modifier.weight(1f), color = Color.White, fontSize = 15.sp)
-            PaneButton("CLOSE", onClick = onDismiss)
+            Text("Gestures & keys", Modifier.weight(1f), color = Ui.Text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            IconPill(MbIcons.Close, "Close", onClick = onDismiss)
         }
         Spacer(Modifier.height(16.dp))
 
-        HelpSection("BROWSER")
+        HelpSection("Browser")
         HelpRow("Tap tile", "Open folder, or open media fullscreen")
         HelpRow("Long-press tile", "Menu: thumbnail, pin, select, rename, move, copy, delete")
-        HelpRow("Long-press → Select", "Multi-select mode: tap tiles to add, then MOVE / COPY / DELETE them together")
-        HelpRow("Select → DATASET", "Copy the selected media into a dataset category")
-        HelpRow("MENU → Hide filenames", "Toggle the name bar on tiles")
+        HelpRow("Long-press → Select", "Multi-select mode: tap tiles to add, then Move / Copy / Delete them together")
+        HelpRow("Select → Dataset", "Copy the selected media into a dataset category")
+        HelpRow("Menu (⋮) → Hide filenames", "Toggle the name bar on photo tiles")
         HelpRow("Pinch grid", "Grow / shrink the tiles (remembered)")
         HelpRow("Drag right-edge bar", "Fast-scroll through a long folder")
-        HelpRow("SORT, tap again", "Same sort key twice flips the direction")
-        HelpRow("FILTER", "Type to narrow the folder by filename")
-        HelpRow("★", "Jump to a pinned folder")
+        HelpRow("Sort, same key again", "Same sort key twice flips the direction")
+        HelpRow("Search icon", "Type to narrow the folder by filename")
+        HelpRow("Star icon", "Jump to a pinned folder")
         HelpRow("Back", "Up one folder; exits the app at home")
 
-        Spacer(Modifier.height(16.dp))
-        HelpSection("VIEWER")
+        Spacer(Modifier.height(20.dp))
+        HelpSection("Viewer")
         HelpRow("Tap", "Show / hide the controls (they auto-hide after 3s)")
         HelpRow("Double-tap left / right", "Previous / next item, instantly")
         HelpRow("Swipe left / right", "Page to the next / previous item")
         HelpRow("Pinch", "Zoom; drag to pan while zoomed")
-        HelpRow("1:1 / FIT", "Pixel-perfect zoom vs fit-to-screen")
-        HelpRow("SPLIT", "Two items side by side; PICK re-chooses the right one")
+        HelpRow("1:1 / Fit", "Pixel-perfect zoom vs fit-to-screen")
+        HelpRow("Split", "Two items side by side; Pick re-chooses the right one")
         HelpRow("Hold left / right half", "Rewind / fast-forward video at 3× until released")
         HelpRow("Drag seek bar", "Live video scrubbing, frame-accurate")
         HelpRow("← / → keys", "Previous / next item")
         HelpRow("Hold J / K", "Rewind / fast-forward video, accelerating")
-        HelpRow("DATASET", "Sort bar of category folders; tap one to copy the item in (originals untouched)")
+        HelpRow("Dataset", "Sort bar of category folders; tap one to copy the item in (originals untouched)")
         HelpRow("Tap a lit category", "Remove that copy (to the trash)")
-        HelpRow("1 – 9 keys", "Toggle the item in category 1–9 while DATASET is on")
+        HelpRow("1 – 9 keys", "Toggle the item in category 1–9 while Dataset is on")
         HelpRow("Category on a video", "Saves the frame on screen as a PNG; pause on it and tap again to undo")
-        HelpRow("FRAMES", "On a video: a grid of evenly spaced stills — tap the good ones, then a category")
+        HelpRow("Frames", "On a video: a grid of evenly spaced stills — tap the good ones, then a category")
     }
 }
 
 @Composable
 private fun HelpSection(title: String) {
-    Text(title, color = Color(0xFF9BA3AE), fontSize = 12.sp)
-    Spacer(Modifier.height(6.dp))
+    Text(title.uppercase(), color = Ui.Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
+    Spacer(Modifier.height(8.dp))
 }
 
 @Composable
 private fun HelpRow(gesture: String, desc: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        Text(gesture, Modifier.width(210.dp), color = Color(0xFF9BA3AE), fontSize = 13.sp)
-        Text(desc, Modifier.weight(1f), color = Color.White, fontSize = 13.sp)
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Text(gesture, Modifier.width(230.dp), color = Ui.TextDim, fontSize = 14.sp)
+        Text(desc, Modifier.weight(1f), color = Ui.Text, fontSize = 14.sp)
     }
 }

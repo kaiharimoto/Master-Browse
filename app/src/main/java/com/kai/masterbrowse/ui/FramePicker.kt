@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,11 +39,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -155,48 +159,70 @@ fun FramePicker(video: File, categories: List<File>, onClose: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Ui.Bg)
             .then(if (floating) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
     ) {
-        Row(
-            Modifier.fillMaxWidth().background(Color(0xFF101114)).padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            PaneButton("BACK", onClick = onClose)
-            Text(
-                video.name,
-                Modifier.weight(1f).padding(horizontal = 4.dp),
-                color = Color(0xFFB8BCC2),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            FRAME_COUNTS.forEach { n ->
-                PaneButton("$n", active = count == n) {
-                    count = n
-                    Prefs.frameCount = n
+        ToolBar {
+            IconPill(MbIcons.Back, "Back to the video", onClick = onClose)
+            Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                Text(
+                    video.name,
+                    color = Ui.Text,
+                    fontSize = if (floating) 13.sp else 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!floating) {
+                    Text(
+                        "${times.size} stills · tap to select",
+                        color = Ui.TextFaint,
+                        fontSize = 11.5.sp,
+                        maxLines = 1,
+                    )
                 }
             }
-            PaneButton("ALL") {
+            // How many stills to pull: a segmented pill, the active count lit.
+            Row(
+                Modifier.clip(Ui.Pill).background(Ui.Raised).padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                FRAME_COUNTS.forEach { n ->
+                    Text(
+                        "$n",
+                        Modifier
+                            .clip(Ui.Pill)
+                            .background(if (count == n) Ui.Accent else Color.Transparent)
+                            .clickable {
+                                count = n
+                                Prefs.frameCount = n
+                            }
+                            .padding(horizontal = if (floating) 9.dp else 13.dp, vertical = if (floating) 5.dp else 7.dp),
+                        color = if (count == n) Ui.OnAccent else Ui.TextDim,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+            PaneButton("All") {
                 selected.clear()
                 selected.addAll(times)
             }
-            PaneButton("NONE") { selected.clear() }
+            PaneButton("None") { selected.clear() }
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                duration < 0 -> Text("Loading…", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
-                times.isEmpty() -> Text("Can't read this video", Modifier.align(Alignment.Center), color = Color.DarkGray, fontSize = 13.sp)
+                duration < 0 -> Text("Loading…", Modifier.align(Alignment.Center), color = Ui.TextFaint, fontSize = 14.sp)
+                times.isEmpty() -> Text("Can't read this video", Modifier.align(Alignment.Center), color = Ui.TextFaint, fontSize = 14.sp)
                 else -> {
                     val aspect = thumbs.values.firstOrNull()?.let { it.width.toFloat() / it.height } ?: (16f / 9f)
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(if (floating) 140.dp else 220.dp),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        contentPadding = PaddingValues(TILE_GAP_DP.dp),
+                        verticalArrangement = Arrangement.spacedBy(TILE_GAP_DP.dp),
+                        horizontalArrangement = Arrangement.spacedBy(TILE_GAP_DP.dp),
                     ) {
                         items(times, key = { it }) { t ->
                             FrameTile(
@@ -212,25 +238,23 @@ fun FramePicker(video: File, categories: List<File>, onClose: () -> Unit) {
             }
         }
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF101114))
-                .horizontalScroll(rememberScrollState())
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
+        ToolBar(bottomEdge = false) {
             Text(
-                progress ?: "${selected.size} selected — save to:",
-                Modifier.padding(horizontal = 4.dp),
-                color = Color(0xFF9BA3AE),
-                fontSize = 12.sp,
+                progress ?: if (selected.isEmpty()) "Select stills, then save them to" else "Save ${selected.size} to",
+                Modifier.padding(horizontal = 6.dp),
+                color = if (progress != null) Ui.Accent else Ui.TextDim,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
             )
-            if (categories.isEmpty()) {
-                Text("no categories yet", color = Color(0xFF6B6F76), fontSize = 12.sp)
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (categories.isEmpty()) {
+                    Text("No categories yet", color = Ui.TextFaint, fontSize = 13.sp)
+                }
+                categories.forEach { c -> PaneButton(c.name, icon = MbIcons.Folder) { saveTo(c) } }
             }
-            categories.forEach { c -> PaneButton(c.name) { saveTo(c) } }
         }
     }
 }
@@ -247,7 +271,8 @@ private fun FrameTile(
     Box(
         Modifier
             .aspectRatio(aspect)
-            .background(Color(0xFF17181B))
+            .clip(Ui.Tile)
+            .background(Ui.Raised)
             .clickable(onClick = onClick)
     ) {
         if (bitmap != null) {
@@ -257,26 +282,41 @@ private fun FrameTile(
             formatFrameTime(time),
             Modifier
                 .align(Alignment.BottomStart)
-                .background(Color(0xB3000000))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+                .padding(6.dp)
+                .clip(Ui.Pill)
+                .background(Color(0x99000000))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
             color = Color.White,
             fontSize = 11.sp,
         )
         if (savedIn.isNotEmpty()) {
             Text(
-                "✓ " + savedIn.joinToString(", "),
+                "Saved · " + savedIn.joinToString(", "),
                 Modifier
                     .align(Alignment.TopEnd)
-                    .background(Color(0xCC2F5D3A))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                color = Color.White,
+                    .padding(6.dp)
+                    .clip(Ui.Pill)
+                    .background(Color(0xCC0A0B0D))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                color = Ui.Accent,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         if (selected) {
-            Box(Modifier.fillMaxSize().border(3.dp, Color(0xFF4C8DFF)))
+            Box(Modifier.fillMaxSize().border(3.dp, Ui.Accent, Ui.Tile).background(Color(0x268EA6FF)))
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .size(24.dp)
+                    .clip(Ui.Pill)
+                    .background(Ui.Accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(MbIcons.Check, contentDescription = "Selected", Modifier.size(16.dp), tint = Ui.OnAccent)
+            }
         }
     }
 }

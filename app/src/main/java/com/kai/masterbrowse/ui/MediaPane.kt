@@ -5,7 +5,11 @@ import android.graphics.drawable.BitmapDrawable
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.view.TextureView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,9 +28,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,10 +48,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.ImageBitmap
@@ -61,6 +70,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -449,12 +461,23 @@ fun MediaPane(
                     translationX = pageOffset.value
                 }
             }
-            if (controlsVisible) {
-                PaneOverlay(
-                    file, index, items.size, zoom, player, extraButtons,
-                    onInteraction = { interactionTick++ },
-                    onSeekDragChange = { seekDragging = it },
-                )
+            // A short fade is the one bit of motion the app allows: controls blinking in
+            // and out instantly over a photo felt harsh, and 150ms never gets in the way.
+            AnimatedVisibility(
+                visible = controlsVisible,
+                modifier = Modifier.matchParentSize(),
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(150)),
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalOnMedia provides true) {
+                        PaneOverlay(
+                            file, index, items.size, zoom, player, extraButtons,
+                            onInteraction = { interactionTick++ },
+                            onSeekDragChange = { seekDragging = it },
+                        )
+                    }
+                }
             }
         }
     }
@@ -545,26 +568,41 @@ private fun BoxScope.PaneOverlay(
             onInteraction()
         }
     }
+    val compact = LocalAppHost.current.floating
     Row(
         Modifier
             .align(Alignment.TopCenter)
             .fillMaxWidth()
-            .background(Color(0xCC000000))
+            .background(Brush.verticalGradient(listOf(Color(0xB3000000), Color.Transparent)))
             .then(notifyPress)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(
+                start = if (compact) 6.dp else 14.dp,
+                end = if (compact) 6.dp else 14.dp,
+                top = if (compact) 6.dp else 10.dp,
+                bottom = if (compact) 14.dp else 28.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
     ) {
-        Text("${index + 1}/$count", color = Color.Gray, fontSize = 12.sp)
+        Text(
+            "${index + 1} / $count",
+            Modifier
+                .clip(Ui.Pill)
+                .background(Ui.Glass)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            color = Ui.TextDim,
+            fontSize = 12.sp,
+        )
         Text(
             file.name,
-            Modifier.weight(1f),
+            Modifier.weight(1f).padding(horizontal = 4.dp),
             color = Color.White,
-            fontSize = 13.sp,
+            fontSize = if (compact) 12.sp else 14.sp,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        PaneButton(if (zoom.isPixelPerfect) "FIT" else "1:1") { zoom.togglePixelPerfect() }
+        PaneButton(if (zoom.isPixelPerfect) "Fit" else "1:1") { zoom.togglePixelPerfect() }
         extraButtons()
     }
 
@@ -605,21 +643,34 @@ private fun BoxScope.PaneOverlay(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(Color(0xCC000000))
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
                 .then(notifyPress)
-                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 28.dp),
+                .padding(
+                    start = if (compact) 8.dp else 16.dp,
+                    end = if (compact) 8.dp else 16.dp,
+                    top = if (compact) 12.dp else 28.dp,
+                    bottom = if (compact) 6.dp else 24.dp,
+                ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 14.dp),
         ) {
             Box(
                 Modifier
-                    .background(Color(0xFF222428))
+                    .size(if (compact) 36.dp else 48.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
                     .clickable { player.playWhenReady = !player.playWhenReady }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .semantics { contentDescription = if (playing) "Pause" else "Play" },
+                contentAlignment = Alignment.Center,
             ) {
-                Text(if (playing) "❚❚" else "▶", color = Color.White, fontSize = 16.sp)
+                Icon(
+                    if (playing) MbIcons.Pause else MbIcons.Play,
+                    contentDescription = null,
+                    Modifier.size(if (compact) 20.dp else 26.dp),
+                    tint = Color.Black,
+                )
             }
-            Text(formatTime(position), color = Color.White, fontSize = 14.sp)
+            Text(formatTime(position), color = Color.White, fontSize = 13.sp)
             Slider(
                 value = if (duration > 0) position.toFloat().coerceIn(0f, duration.toFloat()) else 0f,
                 onValueChange = {
@@ -647,15 +698,19 @@ private fun BoxScope.PaneOverlay(
                 modifier = Modifier
                     .weight(1f)
                     .height(44.dp),
+                colors = SliderDefaults.colors(
+                    activeTrackColor = Ui.Accent,
+                    inactiveTrackColor = Color(0x40FFFFFF),
+                ),
                 thumb = {
                     Box(
                         Modifier
-                            .size(24.dp)
+                            .size(20.dp)
                             .background(Color.White, CircleShape),
                     )
                 },
             )
-            Text(formatTime(duration), color = Color.White, fontSize = 14.sp)
+            Text(formatTime(duration), color = Ui.TextDim, fontSize = 13.sp)
         }
     }
 }
@@ -718,25 +773,6 @@ private fun rememberVideoPlayer(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     return player
-}
-
-@Composable
-fun PaneButton(label: String, active: Boolean = false, onClick: () -> Unit) {
-    // The floating window is small and its toolbar carries up to seven buttons, so trim
-    // the padding there on top of the overall density scale the overlay applies.
-    val compact = LocalAppHost.current.floating
-    Box(
-        Modifier
-            .background(if (active) Color(0xFF2F5D3A) else Color(0xFF222428))
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = if (compact) 8.dp else 12.dp,
-                vertical = if (compact) 5.dp else 8.dp,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, color = Color.White, fontSize = 13.sp)
-    }
 }
 
 private fun formatTime(ms: Long): String {

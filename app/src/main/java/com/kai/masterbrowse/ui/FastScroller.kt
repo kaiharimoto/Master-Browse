@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -73,10 +74,11 @@ fun BoxScope.FastScrollThumb(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset(y = offsetY)
-                .padding(end = 2.dp)
-                .width(6.dp)
+                .padding(end = 4.dp)
+                .width(5.dp)
                 .height(thumbH)
-                .background(Color(0xFF3A3D44))
+                .clip(Ui.Pill)
+                .background(Color(0x66FFFFFF))
         )
     }
 }

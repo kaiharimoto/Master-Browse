@@ -1,6 +1,7 @@
 package com.kai.masterbrowse.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -22,7 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,7 +80,7 @@ fun MenuHostBox(controller: MenuController, content: @Composable () -> Unit) {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color(0xCC000000))
+                        .background(Color(0xB3000000))
                         // detectTapGestures, not clickable: no ripple and no focus side effects.
                         .pointerInput(Unit) { detectTapGestures { controller.dismiss() } },
                     contentAlignment = Alignment.Center,
@@ -85,7 +88,9 @@ fun MenuHostBox(controller: MenuController, content: @Composable () -> Unit) {
                     Column(
                         Modifier
                             .fillMaxWidth(0.88f)
-                            .background(Color(0xFF1A1C20))
+                            .clip(Ui.Card)
+                            .background(Ui.Raised)
+                            .border(1.dp, Ui.Hairline, Ui.Card)
                             // Swallow taps on the card so they don't dismiss it.
                             .pointerInput(Unit) { detectTapGestures { } }
                             .verticalScroll(rememberScrollState()),
@@ -93,8 +98,8 @@ fun MenuHostBox(controller: MenuController, content: @Composable () -> Unit) {
                         controller.title?.let {
                             Text(
                                 it,
-                                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                                color = Color(0xFFB8BCC2),
+                                Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 6.dp),
+                                color = Ui.TextDim,
                                 fontSize = 13.sp,
                             )
                         }
@@ -107,9 +112,9 @@ fun MenuHostBox(controller: MenuController, content: @Composable () -> Unit) {
                                         controller.dismiss()
                                         entry.onClick()
                                     }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                color = if (entry.highlighted) Color.White else Color(0xFFD6D9DE),
-                                fontSize = 14.sp,
+                                    .padding(horizontal = 18.dp, vertical = 13.dp),
+                                color = if (entry.highlighted) Ui.Text else Ui.TextDim,
+                                fontSize = 14.5.sp,
                             )
                         }
                     }
@@ -120,26 +125,36 @@ fun MenuHostBox(controller: MenuController, content: @Composable () -> Unit) {
 }
 
 /**
- * A [PaneButton] that opens a menu: a real anchored [DropdownMenu] in the activity, the
- * inline card of [MenuHostBox] in the floating window.
+ * A [PaneButton] (or, with [iconOnly], an [IconPill]) that opens a menu: a real anchored
+ * [DropdownMenu] in the activity, the inline card of [MenuHostBox] in the floating window.
  */
 @Composable
-fun MenuButton(label: String, entries: () -> List<MenuEntry>) {
+fun MenuButton(
+    label: String,
+    icon: ImageVector? = null,
+    iconOnly: Boolean = false,
+    entries: () -> List<MenuEntry>,
+) {
     val controller = LocalMenuController.current
+    @Composable
+    fun Trigger(onClick: () -> Unit) {
+        if (iconOnly && icon != null) IconPill(icon, label, onClick = onClick)
+        else PaneButton(label, icon = icon, onClick = onClick)
+    }
     if (controller != null) {
-        PaneButton(label) { controller.show(entries = entries()) }
+        Trigger { controller.show(entries = entries()) }
         return
     }
     var open by remember { mutableStateOf(false) }
     Box {
-        PaneButton(label) { open = true }
+        Trigger { open = true }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             entries().forEach { entry ->
                 DropdownMenuItem(
                     text = {
                         Text(
                             entry.label,
-                            color = if (entry.highlighted) Color.White else Color(0xFFB8BCC2),
+                            color = if (entry.highlighted) Ui.Text else Ui.TextDim,
                         )
                     },
                     onClick = {

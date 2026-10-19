@@ -14,7 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,12 +32,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -187,8 +191,8 @@ fun BrowserScreen(
             title = "Move $what to trash? Trashed items are kept in .MasterBrowseTrash " +
                 "for 30 days, then deleted permanently.",
             entries = listOf(
-                MenuEntry("DELETE", highlighted = true) { runDelete(targets) },
-                MenuEntry("CANCEL") { },
+                MenuEntry("Delete", highlighted = true) { runDelete(targets) },
+                MenuEntry("Cancel") { },
             ),
         )
     }
@@ -218,22 +222,15 @@ fun BrowserScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Ui.Bg)
             // Insets dispatched to a freely-positioned overlay window are meaningless and
             // would eat a big slice of a small floating window.
             .then(if (floating) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing))
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF101114))
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            PaneButton("UP") { FileRepo.parentOf(dir)?.let(onDirChange) }
-            PaneButton("HOME") { onDirChange(home) }
-            MenuButton("★") {
+        ToolBar {
+            IconPill(MbIcons.Up, "Up one folder") { FileRepo.parentOf(dir)?.let(onDirChange) }
+            IconPill(MbIcons.Home, "Home folder") { onDirChange(home) }
+            MenuButton("Pinned folders", icon = MbIcons.Star, iconOnly = true) {
                 if (pinned.isEmpty()) {
                     listOf(MenuEntry("No pinned folders") { })
                 } else {
@@ -256,22 +253,8 @@ fun BrowserScreen(
                     }
                 }
             }
-            Text(
-                dir.absolutePath,
-                Modifier.weight(1f).padding(horizontal = 4.dp),
-                color = Color(0xFFB8BCC2),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            MenuButton("SORT") {
-                listOf(
-                    sortEntry("Name", SortMode.NAME, sortMode, sortDesc) { m -> selectSort(m) },
-                    sortEntry("Date modified", SortMode.DATE, sortMode, sortDesc) { m -> selectSort(m) },
-                    sortEntry("File size", SortMode.SIZE, sortMode, sortDesc) { m -> selectSort(m) },
-                )
-            }
-            if (!floating) PaneButton("FILTER") {
+            FolderTitle(dir, Modifier.weight(1f).padding(horizontal = 8.dp))
+            if (!floating) IconPill(MbIcons.Search, "Filter by name", active = filterOpen) {
                 if (filterOpen) {
                     filter = ""
                     filterOpen = false
@@ -279,12 +262,26 @@ fun BrowserScreen(
                     filterOpen = true
                 }
             }
-            PaneButton(if (aspectMode) "SQUARE" else "ASPECT") {
+            MenuButton("Sort", icon = MbIcons.Sort, iconOnly = true) {
+                listOf(
+                    sortEntry("Name", SortMode.NAME, sortMode, sortDesc) { m -> selectSort(m) },
+                    sortEntry("Date modified", SortMode.DATE, sortMode, sortDesc) { m -> selectSort(m) },
+                    sortEntry("File size", SortMode.SIZE, sortMode, sortDesc) { m -> selectSort(m) },
+                )
+            }
+            // Shows the layout a tap switches to, as the old SQUARE/ASPECT label did.
+            IconPill(
+                if (aspectMode) MbIcons.GridSquare else MbIcons.GridJustified,
+                if (aspectMode) "Square tiles" else "True-aspect tiles",
+            ) {
                 aspectMode = !aspectMode
                 Prefs.aspectMode = aspectMode
             }
             val onInternal = dir.absolutePath.startsWith("/storage/emulated")
-            PaneButton(if (onInternal) "SD" else "INT") {
+            IconPill(
+                if (onInternal) MbIcons.SdCard else MbIcons.Phone,
+                if (onInternal) "SD card" else "Internal storage",
+            ) {
                 if (onInternal) {
                     val sd = FileRepo.sdCardRoot(context)
                     if (sd != null) {
@@ -296,7 +293,7 @@ fun BrowserScreen(
                     onDirChange(FileRepo.internalRoot())
                 }
             }
-            MenuButton("MENU") {
+            MenuButton("Menu", icon = MbIcons.More, iconOnly = true) {
                 buildList {
                     add(MenuEntry("Set this folder as home") { onSetHome(dir) })
                     add(MenuEntry("Set dataset folder…") { datasetPick = true })
@@ -331,71 +328,56 @@ fun BrowserScreen(
             val focusRequester = remember { FocusRequester() }
             LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
             Row(
-                Modifier.fillMaxWidth().background(Color(0xFF16181C)).padding(6.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Ui.Raised)
+                    .padding(start = 14.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Icon(MbIcons.Search, null, Modifier.size(18.dp), tint = Ui.TextDim)
                 BasicTextField(
                     value = filter,
                     onValueChange = { filter = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
-                    cursorBrush = SolidColor(Color.White),
+                    textStyle = TextStyle(color = Ui.Text, fontSize = 14.sp),
+                    cursorBrush = SolidColor(Ui.Accent),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 4.dp)
+                        .padding(vertical = 12.dp)
                         .focusRequester(focusRequester),
                     decorationBox = { inner ->
                         Box {
                             if (filter.isEmpty()) {
-                                Text("Filter by name…", color = Color(0xFF6B6F76), fontSize = 13.sp)
+                                Text("Filter by name", color = Ui.TextFaint, fontSize = 14.sp)
                             }
                             inner()
                         }
                     },
                 )
-                PaneButton("CLEAR") { filter = "" }
-                PaneButton("CLOSE") {
-                    filter = ""
-                    filterOpen = false
+                // Clears the text; on an already-empty box, closes it.
+                IconPill(MbIcons.Close, "Clear filter") {
+                    if (filter.isEmpty()) filterOpen = false else filter = ""
                 }
             }
         }
 
         val picking = pickThumbFor
         if (picking != null) {
-            Row(
-                Modifier.fillMaxWidth().background(Color(0xFF3A3320)).padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "Tap a media tile to set the thumbnail for \"${picking.name}\"",
-                    Modifier.weight(1f),
-                    color = Color(0xFFE8D9A0),
-                    fontSize = 13.sp,
-                )
-                PaneButton("CANCEL") { pickThumbFor = null }
+            Banner("Tap a photo to use as the thumbnail for \"${picking.name}\"") {
+                PaneButton("Cancel") { pickThumbFor = null }
             }
         }
 
         if (selecting) {
-            Row(
-                Modifier.fillMaxWidth().background(Color(0xFF1B2437)).padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "${selected.size} selected — tap tiles to add/remove",
-                    Modifier.weight(1f),
-                    color = Color(0xFF9FBCF2),
-                    fontSize = 13.sp,
-                )
-                PaneButton("MOVE") { if (selected.isNotEmpty()) transfer = selected.map(::File) to false }
-                PaneButton("COPY") { if (selected.isNotEmpty()) transfer = selected.map(::File) to true }
-                MenuButton("DATASET") { datasetEntries() }
-                PaneButton("DELETE") { if (selected.isNotEmpty()) confirmDeleteOf(selected.map(::File)) }
-                PaneButton("CANCEL") {
+            Banner("${selected.size} selected") {
+                PaneButton("Move", icon = MbIcons.Move) { if (selected.isNotEmpty()) transfer = selected.map(::File) to false }
+                PaneButton("Copy", icon = MbIcons.Copy) { if (selected.isNotEmpty()) transfer = selected.map(::File) to true }
+                MenuButton("Dataset", icon = MbIcons.Dataset) { datasetEntries() }
+                PaneButton("Delete", icon = MbIcons.Delete) { if (selected.isNotEmpty()) confirmDeleteOf(selected.map(::File)) }
+                IconPill(MbIcons.Close, "Cancel selection") {
                     selecting = false
                     selected.clear()
                 }
@@ -479,10 +461,10 @@ fun BrowserScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { runDelete(targets) }) { Text("DELETE") }
+                TextButton(onClick = { runDelete(targets) }) { Text("Delete", color = Ui.Danger) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTargets = null }) { Text("CANCEL") }
+                TextButton(onClick = { deleteTargets = null }) { Text("Cancel") }
             },
         )
     }
@@ -504,7 +486,7 @@ fun BrowserScreen(
                         singleLine = true,
                     )
                     renameError?.let {
-                        Text(it, color = Color(0xFFE57373), fontSize = 12.sp)
+                        Text(it, color = Ui.Danger, fontSize = 12.sp)
                     }
                 }
             },
@@ -524,10 +506,10 @@ fun BrowserScreen(
                             }
                         }
                     }
-                }) { Text("RENAME") }
+                }) { Text("Rename") }
             },
             dismissButton = {
-                TextButton(onClick = { renameTarget = null }) { Text("CANCEL") }
+                TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
             },
         )
     }
@@ -550,6 +532,31 @@ private fun sortEntry(
     onSelect: (SortMode) -> Unit,
 ): MenuEntry {
     val isActive = active == mode
-    val prefix = if (isActive) (if (desc) "▼ " else "▲ ") else "     "
-    return MenuEntry(prefix + label, highlighted = isActive) { onSelect(mode) }
+    val suffix = if (isActive) (if (desc) "  ↓" else "  ↑") else ""
+    return MenuEntry(label + suffix, highlighted = isActive) { onSelect(mode) }
+}
+
+/** The current folder's name, with the path leading to it in small type underneath. */
+@Composable
+private fun FolderTitle(dir: File, modifier: Modifier) {
+    val compact = LocalAppHost.current.floating
+    Column(modifier) {
+        Text(
+            dir.name.ifEmpty { dir.absolutePath },
+            color = Ui.Text,
+            fontSize = if (compact) 13.sp else 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!compact) {
+            Text(
+                dir.parent ?: "",
+                color = Ui.TextFaint,
+                fontSize = 11.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }

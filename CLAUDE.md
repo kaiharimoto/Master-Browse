@@ -2,7 +2,7 @@
 
 Utilitarian, tile-based folder-hierarchy media browser for Android tablets (built for the
 Samsung Galaxy Tab S11 Ultra). Kotlin + Jetpack Compose, one `:app` module, dark and
-minimal, no animations. Personal app, sideloaded from GitHub releases.
+minimal. Personal app, sideloaded from GitHub releases.
 
 ## Branching — read this first
 
@@ -24,7 +24,7 @@ below before pushing.
 ## Signing — do not break this
 
 `app/release.keystore` is **committed on purpose** (added at v1.6). It is what makes every
-APK carry the same signature, which is what makes `MENU → Update from GitHub` install in
+APK carry the same signature, which is what makes `⋮ → Update from GitHub` install in
 place instead of failing with a signature mismatch.
 
 - Never add it to `.gitignore`, never delete it, never let the build regenerate it. The
@@ -73,6 +73,12 @@ Tests are plain JVM JUnit over pure-Kotlin logic (`PackRowsTest`, `FileRepoTest`
 `OverlayGeometryTest`). Keep new logic that *can* be Android-free Android-free so it can
 be tested — `OverlayGeometry` is the model for this.
 
+To *see* a UI change without a device, a throwaway Robolectric + Roborazzi harness works:
+`@GraphicsMode(NATIVE)`, `@Config(sdk = [34], qualifiers = "w1280dp-h800dp-xhdpi")`, render
+`BrowserScreen`/`ViewerScreen` over a temp folder of generated PNGs and `captureRoboImage`
+(`captureScreenRoboImage` for dropdowns and dialogs). Video can't play there. Keep it out of
+the repo — it drags heavy test dependencies into every `testDebugUnitTest`.
+
 ## Architecture
 
 - `MainActivity` → `AppRoot` switches between `BrowserScreen` (tile grid) and
@@ -96,7 +102,7 @@ in. Things that will break it if you forget:
   (`ui/MenuHost.kt`), which draws them inline in the overlay's own window. If you add a
   menu or a confirm dialog, wire it through `MenuButton`/`MenuController` too.
 - **Nothing needing the IME works when floating** (the overlay leaves the keyboard to the
-  app underneath by design). Rename and FILTER are hidden there; hide new text input too.
+  app underneath by design). Rename and the filter box are hidden there; hide new text input too.
 - `FLAG_HARDWARE_ACCELERATED` on the window is mandatory or video renders black.
 - Window drag/resize read raw screen coordinates from a plain `View`; Compose's
   window-local deltas stall once the window itself moves. Keep them in the shell chrome so
@@ -106,8 +112,14 @@ in. Things that will break it if you forget:
 
 ## Conventions
 
-- Match the surrounding style: terse utilitarian UI, ALL-CAPS `PaneButton` labels, colours
-  as inline `Color(0xFF…)` literals, no animations.
+- Match the surrounding style (the v1.11 refresh): near-black surfaces, one accent, rounded
+  pills and tiles, icons where the meaning is obvious. Colours and shapes come from `Ui` in
+  `ui/Theme.kt` — add a token there rather than a new one-off literal. Buttons are
+  `PaneButton` (Title-case label, optional icon) and `IconPill`; toolbars are `ToolBar`
+  (`ui/Controls.kt`). Icons are SVG paths in `ui/Icons.kt` — there is deliberately no
+  material-icons dependency.
+- Motion: the viewer controls' 150 ms fade is the only animation. No page transitions,
+  no animated layout, Coil `crossfade(false)`.
 - Comments explain *why*, especially where Android forced an unobvious choice. Several
   workarounds here look arbitrary and are not — say which failure they prevent.
 - README documents user-facing behaviour; update it when behaviour changes.

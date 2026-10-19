@@ -24,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -152,12 +151,12 @@ private fun PermissionScreen() {
         Text(
             "Master Browse needs \"All files access\" to browse every folder, " +
                 "including hidden folders and ones containing .nomedia files.",
-            color = Color.White,
-            fontSize = 15.sp,
+            color = Ui.Text,
+            fontSize = 16.sp,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        PaneButton("GRANT ALL FILES ACCESS") {
+        PaneButton("Grant all files access", active = true) {
             val specific = Intent(
                 Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:${context.packageName}"),
