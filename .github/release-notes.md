@@ -1,16 +1,17 @@
-A mini Master Browse that floats on top of other apps.
+Sort photos and video stills into training-set folders without touching the originals — and a cleaner, more modern look.
 
 ## Added
-- **Pop out** — `POP OUT` in the viewer shrinks the whole app into a small window drawn on top of whatever you switch to, and drops the fullscreen app to the background. It is the *complete* app, not a video surface: browse folders, open media, swipe between items, pinch to zoom, scrub video and use the keyboard, all inside the floating window. `EXPAND` brings the fullscreen app back showing whatever the mini window was on; `✕` closes it.
-- **Drag and resize** — drag the window by its title bar, resize it from the corner grip. Position and size are remembered, and the mini window keeps its own tile size so pinching tiles small in it never shrinks the fullscreen grid.
-- **Fits the media** — the window takes the aspect ratio of whatever it is showing, so a portrait photo gets a tall window and a 16:9 video a wide one, instead of letterbox bars. It reshapes as you swipe, keeping the footprint you last dragged it to.
+- **Dataset mode** — pick a dataset folder once (`⋮ → Set dataset folder…`, or `Dataset` in the viewer); each subfolder is a category. With `Dataset` on, the viewer shows a fixed bar of category buttons under the media: tap one, or press `1`–`9`, to **copy** the item in. The button lights up, an item can be in several categories, and tapping a lit button moves just that copy to the trash. Originals are only ever read. `New` creates a category and adds the current item to it; `Folder` switches dataset folders.
+- **Video stills** — on a video, a category button saves the *frame on screen* as a full-resolution PNG named after its timestamp (`clip_01m02s345.png`) — the exact frame, not the nearest keyframe. The button counts the stills that category holds from the video and lights when paused on one, so a second tap undoes it.
+- **Frames picker** — `Frames` on a video opens a grid of 12 / 24 / 48 / 96 evenly spaced stills. Tap the good ones (or `All`), then a category, to save them in one go; stills already saved are marked with their categories.
+- **Batch send** — in the grid, *Select* some tiles and use `Dataset` to copy them all into a category.
+- **Refreshed look** — icon toolbars, rounded pill buttons and tiles, one accent colour, gradient name labels, a folder name with its path under it, and viewer controls that float over the media on translucent glass and fade in and out. In the floating window, buttons shrink to icons.
+- **Split in the floating window** — `Split` works in the mini window too; it widens to hold both panes.
 
-## Notes
-- Needs the **Display over other apps** permission; the app asks the first time you tap `POP OUT`. A low-priority ongoing notification keeps the window alive while it is up, with `EXPAND` and `CLOSE` actions.
-- Back inside the mini window walks the same chain as fullscreen (viewer → grid → up the tree), and closes the window at the home folder. Tap the window first — an overlay only receives keys once it has focus, so the app underneath keeps its keyboard otherwise.
-- Rename, `FILTER`, Help and the updater are left out of the mini window: the first two need the on-screen keyboard, which the overlay deliberately leaves to the app underneath, and the last two open their own window, which an overlay cannot host.
+## Fixed
+- **True-aspect rows** — the last tile of each row was cut off slightly by the grid's side padding.
 
 ## Install
-Installs **in place** — `MENU → Update from GitHub` on v1.6+. Coming from v1.5 or earlier: uninstall once, then sideload.
+Installs **in place** — `⋮ → Update from GitHub` (labelled `MENU` before this version) on v1.6+. Coming from v1.5 or earlier: uninstall once, then sideload.
 
-versionName 1.10 / versionCode 11 — min SDK 30, target SDK 35.
+versionName 1.11 / versionCode 12 — min SDK 30, target SDK 35.
