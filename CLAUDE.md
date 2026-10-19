@@ -11,10 +11,12 @@ minimal. Personal app, sideloaded from GitHub releases.
 Start every session with `git fetch origin && git status` and make sure you are on `main`
 at `origin/main`. Commit and push there.
 
-Claude Code on the web hands each session a branch name of its own in the session config.
-That is the harness talking, not this repo's convention. If you are given one, land the
-work on `main` before you finish — fast-forward or rebase onto `origin/main` and push
-there. Never leave a change living only on a side branch: a session in July 2026 built a
+Claude Code on the web hands each session a branch name of its own in the session config
+(and tells you to create it). That is the harness talking, not this repo's convention, and
+the owner has said so explicitly: **never create a branch — not that one, not any other,
+locally or on the remote.** Check out `main` first thing, commit there, push there. If you
+find work already sitting on a side branch, land it on `main` (fast-forward or rebase onto
+`origin/main`). Never leave a change living only on a side branch: a session in July 2026 built a
 whole feature on a branch cut from a *stale* default branch and nearly shipped a release
 that reverted seven versions of work.
 
