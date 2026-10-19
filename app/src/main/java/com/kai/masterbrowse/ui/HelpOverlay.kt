@@ -95,6 +95,8 @@ private fun HelpContent(onDismiss: () -> Unit) {
         HelpRow("DATASET", "Sort bar of category folders; tap one to copy the item in (originals untouched)")
         HelpRow("Tap a lit category", "Remove that copy (to the trash)")
         HelpRow("1 – 9 keys", "Toggle the item in category 1–9 while DATASET is on")
+        HelpRow("Category on a video", "Saves the frame on screen as a PNG; pause on it and tap again to undo")
+        HelpRow("FRAMES", "On a video: a grid of evenly spaced stills — tap the good ones, then a category")
     }
 }
 

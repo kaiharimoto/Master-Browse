@@ -98,4 +98,38 @@ class DatasetTest {
         assertTrue(File(root, "face").isDirectory)
         assertNull(Dataset.create(root, "face"))
     }
+
+    @Test
+    fun `frame names round-trip`() {
+        val video = File("/x/clip.v2.mp4")
+        assertEquals("clip.v2_01m02s345.png", Dataset.frameName(video, 62_345))
+        assertEquals(62_345L, Dataset.frameTime(video, "clip.v2_01m02s345.png"))
+        assertEquals("clip.v2_125m00s000.png", Dataset.frameName(video, 125 * 60_000L))
+        assertEquals(125 * 60_000L, Dataset.frameTime(video, "clip.v2_125m00s000.png"))
+    }
+
+    @Test
+    fun `frame time ignores other videos and other files`() {
+        val video = File("/x/clip.mp4")
+        assertNull(Dataset.frameTime(video, "clip2_00m01s000.png"))
+        assertNull(Dataset.frameTime(video, "clip_00m01s000.jpg"))
+        assertNull(Dataset.frameTime(video, "clip.png"))
+        assertNull(Dataset.frameTime(video, "other_00m01s000.png"))
+    }
+
+    @Test
+    fun `frames in a category are listed in time order`() {
+        val cat = tmp.newFolder("cat")
+        val video = File(tmp.root, "clip.mp4")
+        listOf(5_000L, 1_000L, 3_000L).forEach { file(cat, Dataset.frameName(video, it), "png") }
+        file(cat, "unrelated.png", "png")
+        assertEquals(listOf(1_000L, 3_000L, 5_000L), Dataset.framesIn(cat, video))
+    }
+
+    @Test
+    fun `even times sit mid-slice and stay inside the video`() {
+        assertEquals(listOf(1_000L, 3_000L, 5_000L, 7_000L, 9_000L), Dataset.evenTimes(10_000, 5))
+        assertTrue(Dataset.evenTimes(0, 5).isEmpty())
+        assertTrue(Dataset.evenTimes(100, 96).all { it in 0 until 100 })
+    }
 }

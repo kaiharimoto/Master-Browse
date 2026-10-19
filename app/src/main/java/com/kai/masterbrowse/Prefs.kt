@@ -121,6 +121,13 @@ object Prefs {
             sp.edit().putBoolean("datasetMode", value).apply()
         }
 
+    /** How many evenly spaced stills the frame picker pulls from a video. */
+    var frameCount: Int
+        get() = sp.getInt("frameCount", 24)
+        set(value) {
+            sp.edit().putInt("frameCount", value).apply()
+        }
+
     fun folderThumb(folderPath: String): String? = sp.getString("thumb:$folderPath", null)
 
     fun setFolderThumb(folderPath: String, imagePath: String?) {

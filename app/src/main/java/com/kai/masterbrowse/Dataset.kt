@@ -1,6 +1,7 @@
 package com.kai.masterbrowse
 
 import java.io.File
+import java.util.Locale
 
 /**
  * Dataset mode: sorting media into category folders by *copying* it, for building
@@ -70,6 +71,42 @@ object Dataset {
     fun remove(category: File, src: File, trash: (File) -> Boolean = FileRepo::moveToTrash): Boolean {
         val copy = findCopy(category, src) ?: return true
         return trash(copy)
+    }
+
+    /**
+     * File name for the still of [video] at [timeMs]: "clip_01m02s345.png" for clip.mp4 at
+     * 62.345 s. Deterministic, so whether a frame is already in a category is a plain
+     * exists() check and a second tap at the same moment finds it to undo. Locale.ROOT so
+     * the digits are always ASCII (some locales would format them in their own script).
+     */
+    fun frameName(video: File, timeMs: Long): String =
+        String.format(
+            Locale.ROOT, "%s_%02dm%02ds%03d.png",
+            video.nameWithoutExtension, timeMs / 60_000, (timeMs / 1000) % 60, timeMs % 1000,
+        )
+
+    /** The time [name] encodes if it is a still of [video] (per [frameName]), else null. */
+    fun frameTime(video: File, name: String): Long? {
+        val prefix = video.nameWithoutExtension + "_"
+        if (!name.startsWith(prefix)) return null
+        val m = frameSuffix.matchEntire(name.substring(prefix.length)) ?: return null
+        val (min, sec, ms) = m.destructured
+        return min.toLong() * 60_000 + sec.toLong() * 1000 + ms.toLong()
+    }
+
+    private val frameSuffix = Regex("""(\d{2,})m(\d{2})s(\d{3})\.png""")
+
+    /** Times of the stills of [video] already saved in [category], ascending. */
+    fun framesIn(category: File, video: File): List<Long> =
+        (category.list() ?: emptyArray()).mapNotNull { frameTime(video, it) }.sorted()
+
+    /**
+     * [n] times spread evenly across a video of [durationMs], each at the middle of its
+     * slice so neither the first frame (often black) nor the very end is picked.
+     */
+    fun evenTimes(durationMs: Long, n: Int): List<Long> {
+        if (durationMs <= 0 || n <= 0) return emptyList()
+        return (0 until n).map { ((it + 0.5) * durationMs / n).toLong() }
     }
 
     /**

@@ -26,6 +26,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -43,12 +44,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.Player
 import com.kai.masterbrowse.Dataset
 import com.kai.masterbrowse.FileRepo
+import com.kai.masterbrowse.Frames
 import com.kai.masterbrowse.Prefs
+import com.kai.masterbrowse.isVideoFile
 import com.kai.masterbrowse.overlay.Handoff
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -66,6 +71,8 @@ import kotlinx.coroutines.withContext
  * Dataset mode adds a sort bar under the panes: one button per category folder of the
  * dataset root, lit when the primary pane's item has a copy there. Tapping (or pressing
  * 1–9) copies the item in, or trashes that copy if it was already there. See [Dataset].
+ * On a video it saves the frame on screen as a PNG instead, and FRAMES opens
+ * [FramePicker] to pull many stills from it at once.
  */
 @Composable
 fun ViewerScreen(
@@ -107,29 +114,87 @@ fun ViewerScreen(
         }
     }
     val current = items.getOrNull(currentIndex)
-    // Tagged with the item it was computed for, so a page turn never shows the previous
-    // item's categories as lit while the new lookup runs.
-    val membership by produceState<Pair<File?, Set<String>>>(
-        null to emptySet(), current, categories, membershipVersion,
+    val currentIsVideo = current?.isVideoFile() == true
+    // Category path -> what it holds of the current item: for an image, an entry means it
+    // has a copy; for a video, the times of the stills saved from it. Tagged with the item
+    // it was computed for, so a page turn never lights the previous item's categories.
+    val membership by produceState<Pair<File?, Map<String, List<Long>>>>(
+        null to emptyMap(), current, categories, membershipVersion,
     ) {
         val f = current ?: return@produceState
+        val video = f.isVideoFile()
         value = f to withContext(Dispatchers.IO) {
-            categories.filter { Dataset.contains(it, f) }.map { it.absolutePath }.toSet()
+            buildMap {
+                for (c in categories) {
+                    if (video) {
+                        Dataset.framesIn(c, f).takeIf { it.isNotEmpty() }?.let { put(c.absolutePath, it) }
+                    } else if (Dataset.contains(c, f)) {
+                        put(c.absolutePath, emptyList())
+                    }
+                }
+            }
         }
     }
+    // A video category lights up when the paused frame is one already saved there, so a
+    // second tap on the same moment undoes it — the same toggle images get.
+    var primaryPlayer by remember { mutableStateOf<Player?>(null) }
+    var videoPos by remember { mutableLongStateOf(-1L) }
+    LaunchedEffect(primaryPlayer, datasetOn) {
+        val p = primaryPlayer
+        if (p == null || !datasetOn) {
+            videoPos = -1L
+            return@LaunchedEffect
+        }
+        while (true) {
+            videoPos = p.currentPosition
+            delay(200)
+        }
+    }
+    var framesFor by remember { mutableStateOf<File?>(null) }
+
+    fun isMember(category: File): Boolean {
+        val (f, m) = membership
+        if (f != current) return false
+        val held = m[category.absolutePath] ?: return false
+        return if (currentIsVideo) videoPos in held else true
+    }
+
+    fun frameCount(category: File): Int =
+        if (currentIsVideo && membership.first == current) membership.second[category.absolutePath]?.size ?: 0 else 0
 
     fun toggleCategory(category: File) {
         val f = items.getOrNull(currentIndex) ?: return
+        // On a video the category gets the frame on screen, not the file. Read on the main
+        // thread: ExoPlayer may only be touched from the thread that created it.
+        val frameAt = if (f.isVideoFile()) primaryPlayer?.currentPosition ?: return else null
         scope.launch {
             val ok = datasetLock.withLock {
                 withContext(Dispatchers.IO) {
-                    // Decide from disk, not from the button: it may still show the last item.
-                    if (Dataset.contains(category, f)) Dataset.remove(category, f) else Dataset.add(category, f)
+                    if (frameAt != null) {
+                        val still = File(category, Dataset.frameName(f, frameAt))
+                        if (still.exists()) FileRepo.moveToTrash(still) else Frames.save(category, f, frameAt)
+                    } else {
+                        // Decide from disk, not from the button: it may still show the last item.
+                        if (Dataset.contains(category, f)) Dataset.remove(category, f) else Dataset.add(category, f)
+                    }
                 }
             }
             if (!ok) Toast.makeText(context, "Failed: ${category.name}", Toast.LENGTH_SHORT).show()
             membershipVersion++
         }
+    }
+
+    val frameVideo = framesFor
+    if (frameVideo != null) {
+        FramePicker(
+            video = frameVideo,
+            categories = categories,
+            onClose = {
+                framesFor = null
+                membershipVersion++
+            },
+        )
+        return
     }
 
     if (pickingRoot) {
@@ -197,6 +262,7 @@ fun ViewerScreen(
                 },
                 // Only the primary pane drives the window shape.
                 onMediaSizeChange = { primarySize = it },
+                onPlayerChange = { primaryPlayer = it },
                 onKey = { key ->
                     val n = DIGIT_KEYS.indexOf(key).takeIf { it >= 0 } ?: NUMPAD_KEYS.indexOf(key)
                     val category = if (datasetOn && n >= 0) categories.getOrNull(n) else null
@@ -211,6 +277,12 @@ fun ViewerScreen(
                         else -> datasetOn = true
                     }
                     Prefs.datasetMode = datasetOn
+                }
+                if (datasetOn && currentIsVideo) {
+                    PaneButton("FRAMES") {
+                        paneStart = currentIndex
+                        framesFor = current
+                    }
                 }
                 PaneButton(if (split) "SINGLE" else "SPLIT") {
                     split = !split
@@ -258,7 +330,8 @@ fun ViewerScreen(
             DatasetBar(
                 root = root,
                 categories = categories,
-                isMember = { membership.first == current && it.absolutePath in membership.second },
+                isMember = ::isMember,
+                frameCount = ::frameCount,
                 onToggle = ::toggleCategory,
                 onNew = { newCategoryOpen = true },
                 onChangeRoot = ::openRootPicker,
@@ -297,6 +370,7 @@ private fun DatasetBar(
     root: File?,
     categories: List<File>,
     isMember: (File) -> Boolean,
+    frameCount: (File) -> Int,
     onToggle: (File) -> Unit,
     onNew: () -> Unit,
     onChangeRoot: () -> Unit,
@@ -322,7 +396,9 @@ private fun DatasetBar(
             Text("no categories yet", color = Color(0xFF6B6F76), fontSize = 12.sp)
         }
         categories.forEachIndexed { i, c ->
-            PaneButton(if (i < 9) "${i + 1} ${c.name}" else c.name, active = isMember(c)) { onToggle(c) }
+            val n = frameCount(c)
+            val label = (if (i < 9) "${i + 1} ${c.name}" else c.name) + if (n > 0) " · $n" else ""
+            PaneButton(label, active = isMember(c)) { onToggle(c) }
         }
         // Naming a category needs the keyboard, which the floating window leaves to the
         // app underneath — make categories from the fullscreen app (or a file manager).

@@ -107,6 +107,8 @@ import kotlinx.coroutines.withContext
  * [onMediaSizeChange] reports the item's intrinsic pixel size, which the floating window
  * uses to reshape itself to the media.
  * [onKey] receives key presses the pane doesn't use itself; return true to consume.
+ * [onPlayerChange] hands out the current video's player (null on images), so the host can
+ * read the playback position — dataset mode saves the frame on screen.
  */
 // setSeekParameters (used by the J/K jog and the seek bar) is media3-unstable API.
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -118,6 +120,7 @@ fun MediaPane(
     onIndexChange: (Int) -> Unit = {},
     onMediaSizeChange: (Size) -> Unit = {},
     onKey: (Key) -> Boolean = { false },
+    onPlayerChange: (Player?) -> Unit = {},
     extraButtons: @Composable RowScope.() -> Unit = {},
 ) {
     var index by remember(items, startIndex) {
@@ -183,6 +186,11 @@ fun MediaPane(
             onVideoSize = { videoSizeReady = true },
         )
     } else null
+    val playerCb = rememberUpdatedState(onPlayerChange)
+    DisposableEffect(player) {
+        playerCb.value(player)
+        onDispose { playerCb.value(null) }
+    }
 
     val painter = if (file != null && !isVideo) {
         rememberAsyncImagePainter(
