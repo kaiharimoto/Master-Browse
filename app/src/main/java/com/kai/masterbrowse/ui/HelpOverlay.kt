@@ -63,7 +63,7 @@ private fun HelpContent(onDismiss: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("GESTURES & KEYS", Modifier.weight(1f), color = Color.White, fontSize = 15.sp)
-            PaneButton("CLOSE", onDismiss)
+            PaneButton("CLOSE", onClick = onDismiss)
         }
         Spacer(Modifier.height(16.dp))
 
@@ -71,6 +71,7 @@ private fun HelpContent(onDismiss: () -> Unit) {
         HelpRow("Tap tile", "Open folder, or open media fullscreen")
         HelpRow("Long-press tile", "Menu: thumbnail, pin, select, rename, move, copy, delete")
         HelpRow("Long-press → Select", "Multi-select mode: tap tiles to add, then MOVE / COPY / DELETE them together")
+        HelpRow("Select → DATASET", "Copy the selected media into a dataset category")
         HelpRow("MENU → Hide filenames", "Toggle the name bar on tiles")
         HelpRow("Pinch grid", "Grow / shrink the tiles (remembered)")
         HelpRow("Drag right-edge bar", "Fast-scroll through a long folder")
@@ -91,6 +92,9 @@ private fun HelpContent(onDismiss: () -> Unit) {
         HelpRow("Drag seek bar", "Live video scrubbing, frame-accurate")
         HelpRow("← / → keys", "Previous / next item")
         HelpRow("Hold J / K", "Rewind / fast-forward video, accelerating")
+        HelpRow("DATASET", "Sort bar of category folders; tap one to copy the item in (originals untouched)")
+        HelpRow("Tap a lit category", "Remove that copy (to the trash)")
+        HelpRow("1 – 9 keys", "Toggle the item in category 1–9 while DATASET is on")
     }
 }
 

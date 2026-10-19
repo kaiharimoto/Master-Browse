@@ -107,6 +107,20 @@ object Prefs {
 
         }
 
+    /** Dataset mode's root folder; each subfolder of it is a category. See [Dataset]. */
+    var datasetRoot: String?
+        get() = sp.getString("datasetRoot", null)
+        set(value) {
+            sp.edit().putString("datasetRoot", value).apply()
+        }
+
+    /** Whether the viewer shows the dataset sort bar. */
+    var datasetMode: Boolean
+        get() = sp.getBoolean("datasetMode", false)
+        set(value) {
+            sp.edit().putBoolean("datasetMode", value).apply()
+        }
+
     fun folderThumb(folderPath: String): String? = sp.getString("thumb:$folderPath", null)
 
     fun setFolderThumb(folderPath: String, imagePath: String?) {

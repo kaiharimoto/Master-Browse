@@ -38,6 +38,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kai.masterbrowse.Dataset
 import com.kai.masterbrowse.FileRepo
 import com.kai.masterbrowse.Prefs
 import com.kai.masterbrowse.SortMode
@@ -74,6 +75,7 @@ fun BrowserScreen(
     // Multi-select mode: while active, tapping tiles toggles membership instead of opening.
     var selecting by remember(dir) { mutableStateOf(false) }
     val selected = remember(dir) { mutableStateListOf<String>() }
+    var datasetPick by remember { mutableStateOf(false) }
 
     val floating = LocalAppHost.current.floating
     val menuController = LocalMenuController.current
@@ -95,6 +97,30 @@ fun BrowserScreen(
         val p = f.absolutePath
         if (!selected.remove(p)) selected.add(p)
         if (selected.isEmpty()) selecting = false
+    }
+
+    /** Copies the selected media (folders are skipped) into a dataset category. */
+    fun sendToCategory(category: File) {
+        val files = selected.map(::File).filter { it.isFile }
+        selecting = false
+        selected.clear()
+        scope.launch {
+            val failed = withContext(Dispatchers.IO) { files.count { !Dataset.add(category, it) } }
+            val msg = "${files.size - failed} copied to ${category.name}" +
+                if (failed > 0) ", $failed failed" else ""
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun datasetEntries(): List<MenuEntry> {
+        val root = Prefs.datasetRoot?.let(::File)?.takeIf { it.isDirectory }
+            ?: return listOf(MenuEntry("Choose dataset folder…", highlighted = true) { datasetPick = true })
+        val cats = Dataset.categories(root)
+        return buildList {
+            if (cats.isEmpty()) add(MenuEntry("No categories — add subfolders to ${root.name}") { })
+            cats.forEach { c -> add(MenuEntry(c.name, highlighted = true) { sendToCategory(c) }) }
+            add(MenuEntry("Change dataset folder…") { datasetPick = true })
+        }
     }
 
     fun setPins(p: List<String>) {
@@ -128,6 +154,19 @@ fun BrowserScreen(
                     }
                     thumbVersion++
                 }
+            },
+        )
+        return
+    }
+
+    if (datasetPick) {
+        FolderPicker(
+            title = "Choose dataset folder (its subfolders are the categories)…",
+            start = Prefs.datasetRoot?.let(::File)?.takeIf { it.isDirectory } ?: dir,
+            onCancel = { datasetPick = false },
+            onSelect = { dest ->
+                Prefs.datasetRoot = dest.absolutePath
+                datasetPick = false
             },
         )
         return
@@ -260,6 +299,7 @@ fun BrowserScreen(
             MenuButton("MENU") {
                 buildList {
                     add(MenuEntry("Set this folder as home") { onSetHome(dir) })
+                    add(MenuEntry("Set dataset folder…") { datasetPick = true })
                     add(
                         MenuEntry("Clear this folder's thumbnail") {
                             Prefs.setFolderThumb(dir.absolutePath, null)
@@ -353,6 +393,7 @@ fun BrowserScreen(
                 )
                 PaneButton("MOVE") { if (selected.isNotEmpty()) transfer = selected.map(::File) to false }
                 PaneButton("COPY") { if (selected.isNotEmpty()) transfer = selected.map(::File) to true }
+                MenuButton("DATASET") { datasetEntries() }
                 PaneButton("DELETE") { if (selected.isNotEmpty()) confirmDeleteOf(selected.map(::File)) }
                 PaneButton("CANCEL") {
                     selecting = false

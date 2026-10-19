@@ -77,8 +77,8 @@ fun FloatingShell(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                PaneButton("EXPAND", onExpand)
-                PaneButton("✕", onClose)
+                PaneButton("EXPAND", onClick = onExpand)
+                PaneButton("✕", onClick = onClose)
             }
             Box(Modifier.weight(1f).fillMaxWidth()) { content() }
         }

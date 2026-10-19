@@ -106,6 +106,7 @@ import kotlinx.coroutines.withContext
  * [startIndex] — that is remembered per value and would reset zoom on every page turn.
  * [onMediaSizeChange] reports the item's intrinsic pixel size, which the floating window
  * uses to reshape itself to the media.
+ * [onKey] receives key presses the pane doesn't use itself; return true to consume.
  */
 // setSeekParameters (used by the J/K jog and the seek bar) is media3-unstable API.
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -116,6 +117,7 @@ fun MediaPane(
     modifier: Modifier = Modifier,
     onIndexChange: (Int) -> Unit = {},
     onMediaSizeChange: (Size) -> Unit = {},
+    onKey: (Key) -> Boolean = { false },
     extraButtons: @Composable RowScope.() -> Unit = {},
 ) {
     var index by remember(items, startIndex) {
@@ -347,7 +349,11 @@ fun MediaPane(
                         interactionTick++
                         true
                     }
-                    else -> false
+                    // Any other key goes to the host (dataset mode's 1–9). Only the first
+                    // press counts, so holding a key can't flip a category back and forth.
+                    else -> ev.type == KeyEventType.KeyDown &&
+                        ev.nativeKeyEvent.repeatCount == 0 &&
+                        onKey(ev.key)
                 }
             }
             .focusable()
@@ -707,13 +713,13 @@ private fun rememberVideoPlayer(
 }
 
 @Composable
-fun PaneButton(label: String, onClick: () -> Unit) {
+fun PaneButton(label: String, active: Boolean = false, onClick: () -> Unit) {
     // The floating window is small and its toolbar carries up to seven buttons, so trim
     // the padding there on top of the overall density scale the overlay applies.
     val compact = LocalAppHost.current.floating
     Box(
         Modifier
-            .background(Color(0xFF222428))
+            .background(if (active) Color(0xFF2F5D3A) else Color(0xFF222428))
             .clickable(onClick = onClick)
             .padding(
                 horizontal = if (compact) 8.dp else 12.dp,
