@@ -41,6 +41,10 @@ place instead of failing with a signature mismatch.
 Releases go out through `.github/workflows/release.yml` on manual dispatch. Do not build
 and upload an APK by hand.
 
+**When a feature is finished and passes the checks under "Verifying changes", cut the
+release yourself — don't ask first.** The owner tests on the tablet via
+`⋮ → Update from GitHub`, so an unreleased feature is an untested one.
+
 1. Rewrite `.github/release-notes.md` for this version (the workflow uses it verbatim as
    the release body). Follow the house style: a one-line summary, then `## Added` /
    `## Fixed` with bold lead-ins, then `## Install`, then a
